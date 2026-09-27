@@ -150,7 +150,7 @@ async function openCodex() {
     })().catch(() => rejectTurn?.(Error('Codex 消息处理失败')))
   })
   await codexRequest('initialize', {
-    clientInfo: { name: 'opl-dsh', version: '0.2.11' },
+    clientInfo: { name: 'opl-dsh', version: '0.2.12' },
     capabilities: { experimentalApi: true },
   })
   child.stdin!.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n')
@@ -180,6 +180,7 @@ async function claudePrompt(text: string, effort?: string) {
     : ['Agent', 'Task']
   const abortController = new AbortController()
   let responseTimedOut = false
+  let networkRetry = false
   let firstResponseTimer: ReturnType<typeof setTimeout> | undefined = setTimeout(
     () => {
       responseTimedOut = true
@@ -226,13 +227,14 @@ async function claudePrompt(text: string, effort?: string) {
         if (['Read', 'Glob', 'Grep', 'LS', 'TodoWrite'].includes(name))
           return { behavior: 'allow', updatedInput: input }
         if (readonly) return { behavior: 'deny', message: '此组合只允许读取' }
-        if (
-          ['Write', 'Edit', 'NotebookEdit'].includes(name) &&
-          !(await pathInProject(input.file_path ?? input.notebook_path))
-        )
-          return { behavior: 'deny', message: '不能写入项目目录之外' }
-        if (name === 'Bash' && input.dangerouslyDisableSandbox)
-          return { behavior: 'deny', message: '不能退出组合的沙箱' }
+        if (['Write', 'Edit', 'NotebookEdit'].includes(name))
+          return (await pathInProject(input.file_path ?? input.notebook_path))
+            ? { behavior: 'allow', updatedInput: input }
+            : { behavior: 'deny', message: '不能写入项目目录之外' }
+        if (name === 'Bash')
+          return input.dangerouslyDisableSandbox
+            ? { behavior: 'deny', message: '不能退出组合的沙箱' }
+            : { behavior: 'allow', updatedInput: input }
         return (await permission(
           'Claude Code · ' + name + '\n' + JSON.stringify(input).slice(0, 2000),
         ))
@@ -244,6 +246,8 @@ async function claudePrompt(text: string, effort?: string) {
   let result: any
   try {
     for await (const event of claude) {
+      if (event.type === 'system' && event.subtype === 'api_retry' && event.error_status === null)
+        networkRetry = true
       if (event.type === 'assistant' || event.type === 'result' || event.type === 'stream_event')
         receivedResponse()
       if (event.type === 'stream_event') {
@@ -276,14 +280,14 @@ async function claudePrompt(text: string, effort?: string) {
       if (event.type === 'result') result = event
     }
   } catch (error) {
-    if (responseTimedOut) throw Error('HARNESS_TIMEOUT')
+    if (responseTimedOut) throw Error(networkRetry ? 'HARNESS_NETWORK' : 'HARNESS_TIMEOUT')
     throw error
   } finally {
     receivedResponse()
     claude.close()
     claude = undefined
   }
-  if (responseTimedOut) throw Error('HARNESS_TIMEOUT')
+  if (responseTimedOut) throw Error(networkRetry ? 'HARNESS_NETWORK' : 'HARNESS_TIMEOUT')
   if (cancelled) return { stopReason: 'cancelled' }
   if (!result || result.is_error || result.subtype !== 'success') {
     const status = result?.api_error_status
@@ -433,7 +437,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
           error: {
             code:
               error instanceof Error &&
-              /^HARNESS_(AUTH|RATE_LIMIT|MODEL|EXECUTION)$/.test(error.message)
+              /^HARNESS_(AUTH|RATE_LIMIT|MODEL|EXECUTION|TIMEOUT|NETWORK)$/.test(error.message)
                 ? error.message
                 : 'HARNESS_UNKNOWN',
             message: '官方 Harness 调用未完成',

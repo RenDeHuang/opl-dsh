@@ -28,7 +28,7 @@ async function harnessRpc(method,input,timeout=600000){
 async function waitHarness(input){
  try{return await harnessRpc('wait',input,60000)}
  catch(error){
-  if(!/等待已取消|TimeoutError|fetch failed|timeout/i.test(String(error)))throw error
+  if(!/等待已取消|TimeoutError|fetch failed|timed?\s*out/i.test(String(error)))throw error
   return harnessRpc('snapshot',{sessionId:input.sessionId})
  }
 }

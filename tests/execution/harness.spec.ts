@@ -79,6 +79,34 @@ async function nativeSetup(
   }
 }
 describe('native conversation combinations', () => {
+  it('inherits DSH permissions for generated combinations without elevating other origins', async () => {
+    const { service, root } = await nativeSetup()
+    const automatic = (await service.executionCatalog()).combinations.find(
+      (item) => item.generated && item.modelRef.model === 'codex::test-model',
+    )!
+    const dsh = await service.start(
+      {
+        combination: automatic.id,
+        cwd: root,
+        taskId: 'dsh-workspace',
+        origin: { kind: 'dsh', sessionId: 'native-session' },
+        sandbox: 'workspace',
+      },
+      true,
+    )
+    expect(dsh.sandbox).toBe('workspace')
+    const codex = await service.start(
+      {
+        combination: automatic.id,
+        cwd: root,
+        taskId: 'codex-workspace',
+        origin: { kind: 'codex', sessionId: 'parent' },
+        sandbox: 'workspace',
+      },
+      true,
+    )
+    expect(codex.sandbox).toBe('read-only')
+  })
   it('retries a failed final session write on graceful shutdown', async () => {
     const { service, root, options } = await setup()
     const session = await start(service, root)

@@ -16,7 +16,7 @@ import { LlmError, type GenerateOptions, type StreamChunk } from '@deepseek-ai/d
 import type { Context } from '@deepseek-ai/cordis'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import type { Session, SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-user-questions'
 import { AcpProcess, HarnessTransportError, object } from './acp.ts'
@@ -32,6 +32,7 @@ import {
   type CollaborationReport,
 } from '../contracts/sessions.ts'
 import { ExecutionModelResolver } from './execution-models.ts'
+import type { CombinationDefinition } from '../contracts/catalog.ts'
 import { adapterFor } from './adapters/index.ts'
 import { connectDsh } from './adapters/dsh.ts'
 import type { AdapterOptions } from './adapters/types.ts'
@@ -157,6 +158,21 @@ export class HarnessService {
     })
     this.writeQueue = write.catch(() => {})
     await write
+  }
+  private conversationBinding(session: Session, definition: CombinationDefinition) {
+    if (!session.header.cwd) throw Error('请先选择项目目录')
+    const policy = this.ctx.agents.get(session.id)?.ctx.get('sandboxPolicy')?.resolve({ session })
+    const sandbox =
+      (definition.permissionPolicy === 'read-only' && !definition.generated) ||
+      !policy ||
+      policy.mode === 'read-only'
+        ? 'read-only'
+        : 'workspace'
+    return {
+      cwd: session.header.cwd,
+      sandbox,
+      taskId: `conversation:${definition.id}:${sandbox}`,
+    } as const
   }
   private async load() {
     for (const record of await this.sessionStore.load()) {
@@ -502,7 +518,9 @@ export class HarnessService {
       cwd,
       origin,
       sandbox:
-        definition.permissionPolicy === 'read-only' || input.sandbox === 'read-only'
+        (definition.permissionPolicy === 'read-only' &&
+          !('generated' in definition && definition.generated && origin.kind === 'dsh')) ||
+        input.sandbox === 'read-only'
           ? 'read-only'
           : (parent?.sandbox ?? input.sandbox ?? definition.permissionPolicy),
       acpSessionId: '',
@@ -661,7 +679,7 @@ export class HarnessService {
             fs: { readTextFile: false, writeTextFile: false },
             terminal: false,
           },
-          clientInfo: { name: 'opl-dsh', version: '0.2.11' },
+          clientInfo: { name: 'opl-dsh', version: '0.2.12' },
         }),
       )
       if (init.protocolVersion !== 1) throw Error('Harness 未协商 ACP v1')
@@ -1177,11 +1195,11 @@ export class HarnessService {
       const session = this.ctx.sessions.get(asSessionId<SessionId>(origin.sessionId))
       if (!session?.header.cwd) throw Error('请先选择项目目录')
       cwd = session.header.cwd
-      sandbox =
-        this.ctx.agents.get(session.id)?.ctx.get('sandboxPolicy')?.resolve({ session })?.mode ===
-        'workspace-write'
-          ? 'workspace'
-          : 'read-only'
+      const mode = this.ctx.agents
+        .get(session.id)
+        ?.ctx.get('sandboxPolicy')
+        ?.resolve({ session })?.mode
+      sandbox = mode && mode !== 'read-only' ? 'workspace' : 'read-only'
     }
     if (!parent && origin.kind === 'codex') {
       cwd = required(p.cwd, '项目目录')
@@ -1540,19 +1558,14 @@ export class HarnessService {
       await this.bindSelection(session.id, definition.id)
       return { kind: 'native', sessionId: session.id }
     }
-    if (!session.header.cwd) throw Error('请先选择项目目录')
-    const policy = this.ctx.agents.get(session.id)?.ctx.get('sandboxPolicy')?.resolve({ session })
-    const sandbox =
-      definition.permissionPolicy === 'read-only' || !policy || policy.mode === 'read-only'
-        ? 'read-only'
-        : 'workspace'
+    const binding = this.conversationBinding(session, definition)
     const child = await this.start(
       {
         combination: definition.id,
-        cwd: session.header.cwd,
+        cwd: binding.cwd,
         origin: { kind: 'dsh', sessionId: session.id },
-        taskId: 'conversation:' + definition.id,
-        sandbox,
+        taskId: binding.taskId,
+        sandbox: binding.sandbox,
       },
       true,
     )
@@ -1576,15 +1589,20 @@ export class HarnessService {
       yield* next()
       return
     }
-    const record = [...this.records.values()].find(
-      (item) =>
-        item.origin.kind === 'dsh' &&
-        item.origin.sessionId === options.sessionId &&
-        item.combination === definition.id &&
-        !item.assignment,
+    const session = this.ctx.sessions.get(asSessionId<SessionId>(options.sessionId))
+    if (!session) throw new LlmError('原会话已不存在', 'HARNESS_BINDING')
+    const binding = this.conversationBinding(session, definition)
+    const started = await this.start(
+      {
+        combination: definition.id,
+        cwd: binding.cwd,
+        origin: { kind: 'dsh', sessionId: options.sessionId },
+        taskId: binding.taskId,
+        sandbox: binding.sandbox,
+      },
+      true,
     )
-    if (!record)
-      throw new LlmError('会话的 Harness 绑定缺失，请重新选择运行配置', 'HARNESS_BINDING')
+    const record = this.records.get(started.id)!
     await this.connect(record)
     const user = options.messages.findLast((message) => message.role === 'user')
     if (!user) throw new LlmError('没有可执行的用户输入', 'HARNESS_INPUT')
