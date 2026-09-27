@@ -50,8 +50,8 @@ Windows · x64，在 PowerShell 中运行：
 
 ## 增强能力
 
-- **OPL Gateway**：应用内登录，统一管理账户、余额、连接状态和 DeepSeek、Codex、Grok、Gemini、AWS、Kiro 分组权限、密钥和本机激活状态。Gateway 页面不维护模型目录；登录后把可用路由注册为 DSH 原生模型页面中的 **OPL Gateway** Provider。默认模型 ID 为 `deepseek-flash`，对话选择器显示 **DeepSeek-V4.1-Flash · DSH**；模型来源显示在展开列表的分组标题中。
-- **分组模型路由**：按账号权限自动管理各分组密钥，并保留每个模型的明确分组归属。模型归属决定实际协议：DeepSeek 模型通过官方 DeepSeek adapter 使用 Messages，GPT 等 Codex 模型通过官方 `dsh-llm-pi-ai` 协议库使用 OpenAI。两组不会因为请求失败而互相回退，仍由 DSH 执行工具和管理会话。
+- **OPL Gateway**：应用内登录，统一管理账户、余额、连接状态和 DeepSeek、OpenAI 协议、Grok、Gemini、AWS、Kiro 分组权限、密钥和本机激活状态。Gateway 页面不维护模型目录；登录后把可用路由注册为 DSH 原生模型页面中的 **OPL Gateway** Provider。默认模型 ID 为 `deepseek-flash`，对话选择器显示 **DeepSeek-V4.1-Flash · DSH**；模型来源显示在展开列表的分组标题中。
+- **分组模型路由**：按账号权限自动管理各分组密钥，并保留每个模型的明确分组归属。模型归属决定实际协议：DeepSeek 模型通过官方 DeepSeek adapter 使用 Messages，GPT 等 OpenAI 协议模型通过官方 `dsh-llm-pi-ai` 协议库使用 OpenAI。两组不会因为请求失败而互相回退，仍由 DSH 执行工具和管理会话。
 - **Codex ↔ DSH 协作**：自动安装 `opl-dsh-official` Skill，可启动 DSH、连续派发任务、等待结果、读取持久化反馈。设置中可修复 Skill、调整自动启动和可选通知桥。
 - **模型 + Harness 组合**：在任意 DSH 或 Codex 对话中可把一个明确任务交给 `Grok + Grok Build`。DSH 提供 `delegate_to_harness` 工具，Codex Skill 提供 `delegate` 命令；两者都会在同一项目目录创建独立的官方 Grok Build ACP 会话，保留 Grok 自己的工具、上下文和会话恢复，再把结果返回当前对话。登录 OPL Gateway 后自动维护 已授权分组的独立密钥，Grok 进程通过环境变量引用该密钥。
 - **网页搜索**：登录 OPL Gateway 后，DSH 原生 `web_search` 使用 OPL 的搜索路由；`web_fetch` 继续使用官方公共 HTTP 提供方。搜索固定使用低成本的 `gpt-6-luna`，无需额外配置；不提供独立搜索设置页或本地统计。
@@ -59,7 +59,7 @@ Windows · x64，在 PowerShell 中运行：
 
 设置分为 **OPL Gateway、模型、Harness、运行配置、协作与自动化**。Gateway 账号页负责凭据和权限；模型页复用 DSH 原生设置，OPL Gateway 作为一个来源按分组展开。Harness 页检测本机程序、版本与路径，提供官方安装更新入口。运行配置只引用模型、Harness 和权限，不再重复保存连接和协议；协作与自动化管理任务验收、外部接入和 Skill。
 
-对话输入栏直接选择“来源 → 模型 · Harness”。原生 DSH 模型可建立自定义组合；未配置官方凭据的 DeepSeek 模型不会作为可用选项。同名模型的渠道分别保留：DeepSeek Flash 可选 DeepSeek/Codex；Claude Opus 5.5 可选 AWS/Kiro。账号页展示上游返回的分组倍率，组合始终绑定所选渠道。GPT 使用 Codex 分组。选择外部 Harness 会打开同项目关联子对话，保留原会话。
+对话输入栏直接选择“来源 → 模型 · Harness”。原生 DSH 模型可建立自定义组合；未配置官方凭据的 DeepSeek 模型不会作为可用选项。默认 DeepSeek Flash 只走 DeepSeek 分组，不要求 OpenAI 协议权限；用户在模型页显式启用后，才会加入 OpenAI 协议渠道。同名模型的渠道分别保留；Claude Opus 5.5 可选 AWS/Kiro。账号页展示上游返回的分组倍率，组合始终绑定所选渠道。GPT 使用 OpenAI 协议分组。选择外部 Harness 会打开同项目关联子对话，保留原会话。
 
 Codex 协作保留 DSH 的权限与问题确认。后台主动唤醒 Codex 需要另行配置可用的队列桥；默认通过 Skill 等待或读取结果。
 
@@ -78,11 +78,11 @@ Codex 协作保留 DSH 的权限与问题确认。后台主动唤醒 Codex 需�
 
 Codex Skill 的 `delegate` 返回组合会话 `id`，用它继续、等待或取消；稳定的 task/operation ID 避免断线重试造成重复执行。当前组合结果通过等待或读取返回，尚未接入原生 DSH 的通知 outbox；外部对话显示在 OPL 组合面板，不会自动创建 Codex 原生侧栏任务。
 
-组合复用本机安装的官方 Codex CLI、Claude Code 和 Grok Build；缺少程序时显示安装入口。Antigravity 目前支持程序检测与更新管理。Windows 外部 Harness 尚未完成运行验收。
+组合复用本机安装的官方 Codex CLI、Claude Code 和 Grok Build。Harness 页可从常见用户安装目录和登录 Shell 发现 Codex CLI、Claude Code，显示真实路径与版本；已安装时调用官方更新器，缺少程序时提供一键安装并在完成后重新检测。Antigravity 目前支持程序检测与更新管理。Windows 外部 Harness 尚未完成运行验收。
 
 ## 自动更新与数据
 
-**官方桌面版本和 OPL 增强版本分别管理。** 官方桌面安装器读取 DeepSeek 官方更新清单；OPL 增强当前版本为 `0.2.5`，维护入口在启动官方桌面前每小时最多检查一次增强更新。更新包会先校验摘要和逐文件清单，运行中的 profile 不替换；网络或校验失败时继续使用已安装版本。设置 → 协作与自动化会同时显示官方桌面版本、OPL 增强版本和最近检查结果。
+**官方桌面版本和 OPL 增强版本分别管理。** 官方桌面安装器读取 DeepSeek 官方更新清单；OPL 增强当前版本为 `0.2.6`，维护入口在启动官方桌面前每小时最多检查一次增强更新。更新包会先校验摘要和逐文件清单，运行中的 profile 不替换；网络或校验失败时继续使用已安装版本。设置 → 协作与自动化会同时显示官方桌面版本、OPL 增强版本和最近检查结果。
 
 增强插件、套件缓存和 Skill 位于官方应用外部，官方应用更新不会覆盖这些文件；OPL profile 与官方数据共同位于 `~/.dsh`。界面和安装记录显示实际官方桌面版本；不按版本号人为拒绝新版。插件 API 的实质变化仍可能需要兼容修复。日常使用直接打开官方 DeepSeek Harness，兼容入口只用于维护和增强更新。
 

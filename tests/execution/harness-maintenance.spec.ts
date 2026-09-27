@@ -39,6 +39,37 @@ it('uses fixed official updater arguments and rejects custom Harness commands', 
     } as unknown as HarnessInstallation),
   ).toThrow('官方安装')
 })
+it('provides fixed official install plans for missing Codex and Claude CLIs', () => {
+  const missing = (id: 'codex' | 'claude'): HarnessInstallation => ({
+    id,
+    name: id === 'codex' ? 'Codex CLI' : 'Claude Code',
+    installed: false,
+    runnable: false,
+    instructions: '',
+    website: '',
+    maintenanceAction: 'install',
+  })
+  expect(maintenancePlan(missing('codex'))).toEqual(
+    process.platform === 'win32'
+      ? {
+          command: 'powershell.exe',
+          args: [
+            '-NoProfile',
+            '-NonInteractive',
+            '-Command',
+            '& npm.cmd install --global @openai/codex@latest; exit $LASTEXITCODE',
+          ],
+        }
+      : {
+          command: process.env.SHELL?.startsWith('/') ? process.env.SHELL : '/bin/sh',
+          args: ['-lc', 'exec npm install --global @openai/codex@latest'],
+        },
+  )
+  const claude = maintenancePlan(missing('claude'))
+  expect(claude.command).toBe(process.platform === 'win32' ? 'powershell.exe' : '/bin/sh')
+  expect(claude.args.join(' ')).toContain('claude.ai/install.')
+  expect(claude.args.join(' ')).not.toContain('item.path')
+})
 it('does not pass Gateway or model authentication into package updaters', () => {
   vi.stubEnv('OPL_GATEWAY_CODEX_API_KEY', 'test-sensitive')
   vi.stubEnv('OPENAI_API_KEY', 'test-sensitive')

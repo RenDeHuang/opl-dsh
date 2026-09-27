@@ -392,7 +392,7 @@ export class OplGatewaySearchProvider implements WebSearchProvider {
 function searchEndpointError(endpoint: string, message: string, cause?: unknown): WebError {
   return new WebError(
     `${message}\n\nThe web search request used endpoint ${JSON.stringify(endpoint)}. ` +
-      'Search uses the OPL Gateway Codex channel independently of the conversation model. ' +
+      'Search uses the OPL Gateway OpenAI protocol channel independently of the conversation model. ' +
       'Check the OPL Gateway account connection and retry.',
     'WEB_PROVIDER_ERROR',
     cause === undefined ? undefined : { cause },

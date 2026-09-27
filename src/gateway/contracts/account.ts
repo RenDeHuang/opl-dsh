@@ -56,13 +56,13 @@ export interface GatewayAccountStatus {
   readonly endpoint: string
   /** Whether the credential reference the adapter resolves currently resolves. */
   readonly keyReady: boolean
-  /** Independent Codex-group key for Codex-routed models and search. */
+  /** Independent OpenAI-protocol key for OpenAI-routed models and search. */
   readonly codexKeyReady?: boolean
   /** Independent Grok-group key for the Grok Build harness. */
   readonly grokKeyReady?: boolean
   /** Last model group that returned output in this process. */
   readonly activeChannel?: GatewayGroupId | undefined
-  /** Provisioning failure of the optional Codex model group. */
+  /** Provisioning failure of the optional OpenAI-protocol model group. */
   readonly channelError?: string | undefined
   /** Provisioning failure of the optional Grok Build combination. */
   readonly harnessError?: string | undefined

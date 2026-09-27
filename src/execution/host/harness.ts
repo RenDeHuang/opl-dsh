@@ -193,8 +193,8 @@ export class HarnessService {
     }
   }
   private changed(record: HarnessSession) {
-    this.dirtyRecords.set(record.id, record)
     record.updatedAt = now()
+    this.dirtyRecords.set(record.id, record)
     this.revisionCounter += 1
     this.events.emit(record.id)
   }
@@ -265,18 +265,7 @@ export class HarnessService {
     const job = (async () => {
       try {
         const result = await maintainHarness(item)
-        if (!item.installed && result.command) {
-          const latest = await this.catalogStore.get()
-          latest.harnesses = latest.harnesses.map((h) =>
-            h.id === id ? { ...h, command: result.command } : h,
-          )
-          await this.catalogStore.set(latest)
-        }
-        const fresh = await inspectHarness(
-          { ...definition, ...(!item.installed ? { command: result.command } : {}) },
-          this.directory,
-          this.command(),
-        )
+        const fresh = await inspectHarness(definition, this.directory, this.command())
         if (!fresh.installed || !fresh.version)
           throw Error('更新器已结束，但版本回读失败，请重新检测')
         if (
@@ -286,6 +275,13 @@ export class HarnessService {
           throw Error(
             `已下载 ${result.expectedVersion}，但当前启动入口仍运行 ${fresh.version}；请修复原安装器的启动入口后重试`,
           )
+        if (!item.installed && fresh.path && ['codex', 'claude'].includes(id)) {
+          const latest = await this.catalogStore.get()
+          latest.harnesses = latest.harnesses.map((h) =>
+            h.id === id && fresh.path ? { ...h, command: fresh.path } : h,
+          )
+          await this.catalogStore.set(latest)
+        }
         this.maintenance.set(id, {
           ...state,
           state: 'completed',
@@ -660,7 +656,7 @@ export class HarnessService {
             fs: { readTextFile: false, writeTextFile: false },
             terminal: false,
           },
-          clientInfo: { name: 'opl-dsh', version: '0.2.3' },
+          clientInfo: { name: 'opl-dsh', version: '0.2.6' },
         }),
       )
       if (init.protocolVersion !== 1) throw Error('Harness 未协商 ACP v1')
@@ -1588,7 +1584,12 @@ export class HarnessService {
       }),
     )
     await this.writeQueue
-    await this.flushRecords()
+    // Cancellation can update a record after its last normal save completed.
+    // Drain the dirty set after all active turns are settled so shutdown never
+    // drops the final state; a transient write failure is retried once before
+    // the caller receives the error and can recover from the retained record.
+    for (let attempt = 0; this.dirtyRecords.size > 0 && attempt < 2; attempt += 1)
+      await this.flushRecords()
     await this.sessionStore.dispose()
     await this.catalogStore.dispose()
   }

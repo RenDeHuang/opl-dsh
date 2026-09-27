@@ -45,7 +45,7 @@ npm test
 
 ## 执行器与协作
 
-`execution/host/adapters` 中的 DSH、Grok Build、Codex CLI、Claude Code 各自声明匹配规则和启动方式。外部程序仍保存自己的上下文、工具与原生会话。Codex 使用 app-server，Claude 使用官方 Agent SDK，Grok 使用 ACP。OPL 只转换协议、权限与状态。
+`execution/host/adapters` 中的 DSH、Grok Build、Codex CLI、Claude Code 各自声明匹配规则和启动方式。外部程序仍保存自己的上下文、工具与原生会话。Codex 使用 app-server，Claude 使用官方 Agent SDK，Grok 使用 ACP。OPL 只转换协议、权限与状态。Harness 注册表同时搜索桌面 PATH、登录 Shell PATH、常见用户目录和官方应用附带 CLI；Codex CLI 与 Claude Code 的安装/更新只走固定官方入口，安装完成后必须重新回读绝对路径和版本。
 
 组合目录只保存模型引用、Harness 引用、默认/启用状态和权限。`ExecutionModelResolver` 从官方模型注册表和 Gateway 读取投影，不另存模型连接。新增执行器应提供一个适配器及其协议/权限/恢复测试，不在中心服务增加账户或 Provider 配置分支。
 

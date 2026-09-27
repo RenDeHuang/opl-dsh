@@ -14,7 +14,7 @@ import { OPL_GATEWAY_INFERENCE_BASE_URL } from './opl-credentials.ts'
 /** Internal credential reference populated by the OPL Gateway account service. */
 export const DEFAULT_API_KEY_REF = 'OPL_GATEWAY_DEEPSEEK_API_KEY'
 
-/** Independent Codex-group credential used by Codex-routed models and search. */
+/** Independent OpenAI-protocol credential used by OpenAI-routed models and search. */
 export const CODEX_API_KEY_REF = 'OPL_GATEWAY_CODEX_API_KEY'
 
 /** Independent Grok-group credential used only by the Grok Build harness. */

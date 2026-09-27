@@ -10,6 +10,9 @@ export function gatewayGroupEnabled(ctx: Context, id: GatewayGroupId): boolean {
     | { gatewayGroups?: Record<string, boolean> }
     | undefined
   // Preserve existing routes on upgrade; new optional groups require activation.
+  // Preserve the historical activation of existing paid routes. The default
+  // DeepSeek model is independent of the OpenAI-protocol route; its duplicate
+  // projection is filtered at model-catalog import until the user selects it.
   return value?.gatewayGroups?.[id] ?? id !== 'kiro'
 }
 export async function setGatewayGroupEnabled(ctx: Context, id: unknown, enabled: unknown) {

@@ -106,6 +106,13 @@ describe('native model settings authority', () => {
     expect(f.state['llm-pi-ai'].providers['opl-gateway-openai'].models).toEqual([{ id: 'chosen' }])
     expect(f.discover).toHaveBeenCalledTimes(2)
   })
+
+  it('does not auto-import DeepSeek Flash into the optional OpenAI protocol route', async () => {
+    const f = fixture()
+    f.discover.mockResolvedValue([{ id: 'deepseek-flash' }, { id: 'gpt-new' }])
+    await syncGatewayModels(f.ctx)
+    expect(f.state['llm-pi-ai'].providers['opl-gateway-openai'].models).toEqual([{ id: 'gpt-new' }])
+  })
 })
 
 describe('Gateway discovery presentation', () => {

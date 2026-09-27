@@ -55,12 +55,19 @@ function codexRequest(method: string, params: object): Promise<any> {
   })
 }
 async function openCodex() {
-  child = spawn(command, ['app-server', '--stdio'], {
-    cwd,
-    env,
-    stdio: ['pipe', 'pipe', 'pipe'],
-    windowsHide: true,
-  })
+  const windowsScript = process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(command)
+  child = spawn(
+    windowsScript ? (process.env.ComSpec ?? 'cmd.exe') : command,
+    windowsScript
+      ? ['/d', '/s', '/c', `"${command.replaceAll('"', '""')}" app-server --stdio`]
+      : ['app-server', '--stdio'],
+    {
+      cwd,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
+    },
+  )
   child.stderr!.resume()
   const fail = () => {
     for (const p of pending.values()) p.reject(Error('Codex 进程退出'))
@@ -138,7 +145,7 @@ async function openCodex() {
     })().catch(() => rejectTurn?.(Error('Codex 消息处理失败')))
   })
   await codexRequest('initialize', {
-    clientInfo: { name: 'opl-dsh', version: '0.2.4' },
+    clientInfo: { name: 'opl-dsh', version: '0.2.6' },
     capabilities: { experimentalApi: true },
   })
   child.stdin!.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n')

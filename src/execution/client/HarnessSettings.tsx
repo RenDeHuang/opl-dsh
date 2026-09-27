@@ -40,6 +40,18 @@ export function HarnessSettings({ call }: { call: Call }) {
               {item.runnable ? '可用于对话组合' : '可在本机终端使用；暂不能用于对话组合'}
             </p>
           )}
+          {item.path && (
+            <p className={css.muted}>
+              检测路径：{item.path}
+              {item.detectedBy === 'known-path'
+                ? '（已从常见安装目录发现）'
+                : item.detectedBy === 'shell-path'
+                  ? '（来自登录 Shell PATH）'
+                  : item.detectedBy === 'configured-path'
+                    ? '（来自运行配置）'
+                    : ''}
+            </p>
+          )}
           {item.website && (
             <a href={item.website} target="_blank" rel="noreferrer">
               官方安装与更新

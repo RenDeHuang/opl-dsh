@@ -16,7 +16,7 @@ OPL DSH 在官方桌面上提供账号自动配置、Harness 管理和组合选�
 
 ## Gateway 分组
 
-账号页管理 DeepSeek、Codex、Grok、Gemini、AWS、Kiro 六种分组的独立凭据。没有某一组的权限不阻止账号登录，也不影响其他已授权组。页面区分未配置、未授权、凭据就绪和同步错误；凭据就绪不等于真实模型调用已经验收。
+账号页管理 DeepSeek、OpenAI 协议、Grok、Gemini、AWS、Kiro 六种分组的独立凭据。没有某一组的权限不阻止账号登录，也不影响其他已授权组。页面区分未配置、未授权、凭据就绪和同步错误；凭据就绪不等于真实模型调用已经验收。
 
 登录、刷新时按分组尝试获取模型目录。首次导入和未被用户修改的自动目录可以更新；已有用户模型列表保留。模型页也可手动获取候选模型并保存。自动导入失败时保留已有配置。模型目录所有权摘要保存在原生设置中，不另存一份模型表。
 
@@ -25,7 +25,7 @@ OPL DSH 在官方桌面上提供账号自动配置、Harness 管理和组合选�
 | 分组 | 默认执行接口 | 凭据 |
 | --- | --- | --- |
 | DeepSeek | 官方 DeepSeek adapter / Messages | DeepSeek Key |
-| Codex | 官方 pi-ai 协议适配库 / OpenAI Responses | Codex Key |
+| OpenAI 协议 | 官方 pi-ai 协议适配库 / OpenAI Responses | Codex Key |
 | Grok | OpenAI Responses；Grok Build 通过 ACP 执行 | Grok Key |
 | Gemini | OpenAI Chat Completions，可在模型页调整 | Gemini Key |
 | Kiro | 官方 pi-ai 协议适配库 / Anthropic Messages | Kiro Key |
@@ -33,13 +33,13 @@ OPL DSH 在官方桌面上提供账号自动配置、Harness 管理和组合选�
 
 上述协议是套件默认配置，实际服务支持以端点为准。官方 `dsh-llm-pi-ai` 仅转换模型协议，不负责 Agent 循环。
 
-同名模型具有不同身份：DeepSeek 分组保持历史 ID `deepseek-flash`，Codex 分组使用 `codex::deepseek-flash`。线上请求仍发送 `deepseek-flash`；组合引用同时确定分组，用户不需要输入内部限定 ID。GPT 通过 Codex 分组直接调用。
+同名模型具有不同身份：DeepSeek 分组保持历史 ID `deepseek-flash`，OpenAI 协议分组使用 `codex::deepseek-flash`。线上请求仍发送 `deepseek-flash`；组合引用同时确定分组，用户不需要输入内部限定 ID。GPT 通过 OpenAI 协议分组直接调用。默认自动目录不会将 DeepSeek Flash 复制到该渠道，用户可在模型页主动加入。
 
 ## 设置与使用
 
 - **OPL Gateway**：Gateway 登录、用量、分组权限与凭据。其他 Provider 保留官方的配置入口。
 - **模型**：沿用官方模型页面；OPL Gateway 排在第一位，其他 Provider 和自定义 API 使用官方表单。Gateway 默认显示模型及必要的渠道选项，手动字段和协议放进高级编辑，不要求重填 Key。
-- **Harness**：检测 DSH、Grok Build、Codex CLI、Claude Code、Antigravity CLI（agy）的安装、版本与路径；可登记其他程序。macOS/Linux 可直接调用已安装 Grok、Codex、Claude、agy 的官方更新器；页面展示进度、错误和更新后的版本。未安装程序与 Windows 保留官方入口。内置 DSH 随官方桌面更新，不可删除。
+- **Harness**：检测 DSH、Grok Build、Codex CLI、Claude Code、Antigravity CLI（agy）的安装、版本与路径；可登记其他程序。Codex CLI 与 Claude Code 会搜索登录 Shell PATH、常见用户目录和官方桌面附带目录；已安装时调用官方更新器，未安装时提供固定官方一键安装入口，安装后重新检测绝对路径和版本。内置 DSH 随官方桌面更新，不可删除。
 - **组合**：从 DSH 模型目录选择模型，绑定 Harness 与权限。每个模型可指定一个默认组合；没有自定义默认时，GPT 默认 Codex CLI、Claude 默认 Claude Code，其他模型使用已配置的官方默认组合。
 
 对话输入栏沿用 DSH 原生模型选择器的交互，选项显示“模型 · Harness”，来源仅作为展开菜单的分组标题。没有凭据的官方 DeepSeek 模型不作为可选项。选择 DSH 组合会调用官方 Session 的模型选择接口；只读组合可以收窄权限，不会静默扩大当前权限。选择外部组合会在同一项目创建关联子对话，并打开组合工作区；原对话保留。
@@ -60,7 +60,7 @@ OPL DSH 在官方桌面上提供账号自动配置、Harness 管理和组合选�
 
 模型配置继续写入 DSH 原生设置。Gateway 账号页只管理账号、用量和分组凭据；模型页中的 OPL Gateway 卡片默认平铺模型，同名模型以必要的渠道标记区分，编辑时才展开各调用路由和协议。Key 同步状态不表示真实调用已验证。
 
-新增组合只列出凭据就绪的模型。同名模型的不同计费渠道可分别选用：DeepSeek Flash 的 DeepSeek/Codex，以及 Claude Opus 5.5 的 AWS/Kiro。组合绑定精确渠道，不在失败后静默换组。倍率仅显示 Gateway 实际返回值。已有组合的精确模型引用和权限保持不变，失效组合保留并说明原因，不把不可用模型当作新增选项。对话按钮显示“模型 · Harness”，来源只在展开菜单中分组展示。
+新增组合只列出凭据就绪的模型。同名模型的不同计费渠道可分别选用：DeepSeek Flash 的 DeepSeek/OpenAI 协议，以及 Claude Opus 5.5 的 AWS/Kiro；DeepSeek Flash 的 OpenAI 协议渠道必须由用户主动加入。组合绑定精确渠道，不在失败后静默换组。倍率仅显示 Gateway 实际返回值。已有组合的精确模型引用和权限保持不变，失效组合保留并说明原因，不把不可用模型当作新增选项。对话按钮显示“模型 · Harness”，来源只在展开菜单中分组展示。
 
 设置入口按OPL Gateway、模型、Harness、运行配置、协作与自动化排列。官方通用设置、内置插件和 Agent 预设继续由官方维护；Agent 预设控制 DSH 的工具和工作方式，并非另一种 Harness。连接页“管理模型”通过官方 onboarding 的 openSection 导航到原生模型页。
 

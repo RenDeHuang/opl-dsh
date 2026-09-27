@@ -38,7 +38,9 @@ export function displayModelName(ref: ModelRef, name?: string): string {
   const id = ref.model.includes('::') ? ref.model.slice(ref.model.lastIndexOf('::') + 2) : ref.model
   if (id === 'deepseek-v4.1-flash') return 'DeepSeek-V4.1-Flash（固定版本）'
   if (id === 'deepseek-flash')
-    return ref.model.startsWith('codex::') ? 'DeepSeek-V4.1-Flash · Codex' : 'DeepSeek-V4.1-Flash'
+    return ref.model.startsWith('codex::')
+      ? 'DeepSeek-V4.1-Flash · OpenAI 协议'
+      : 'DeepSeek-V4.1-Flash'
   const route = ref.provider === 'opl-gateway' ? ref.model.split('::')[0] : ''
   const suffix = route === 'aws' ? 'AWS' : route === 'kiro' ? 'Kiro' : ''
   const label = id === 'claude-opus-5-5' ? 'Claude Opus 5.5' : name?.trim() || id

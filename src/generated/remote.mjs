@@ -515,10 +515,12 @@ const _one_person_lab_dsh_opl_oplExecution_harness_installations_result$schema =
   'installed': z.boolean(),
   'version': z.string().optional(),
   'path': z.string().optional(),
+  'detectedBy': z.union([z.literal("configured-path"), z.literal("shell-path"), z.literal("known-path"), z.literal("app-bundle")]).optional(),
   'error': z.string().optional(),
   'runnable': z.boolean(),
   'instructions': z.string(),
   'website': z.string(),
+  'installable': z.boolean().optional(),
   'maintenanceAction': z.union([z.literal("install"), z.literal("update")]).optional(),
   'maintenance': z.object({
   'state': z.union([z.literal("running"), z.literal("completed"), z.literal("failed")]),
@@ -2987,7 +2989,7 @@ export const TYPERT_REMOTE = {
         typeSymbol: '@one-person-lab/dsh-opl/types#GatewayAccountStatus',
         create: _one_person_lab_dsh_opl_oplGatewayAccount_refresh_result$schema,
       },
-      sourceLocation: {"file":"src/gateway/host/account-service.ts","line":422,"column":9},
+      sourceLocation: {"file":"src/gateway/host/account-service.ts","line":431,"column":9},
     },
     {
       id: '@one-person-lab/dsh-opl#oplGatewayAccount/signIn',
@@ -3022,7 +3024,7 @@ export const TYPERT_REMOTE = {
         typeSymbol: '@one-person-lab/dsh-opl/types#GatewaySignInResult',
         create: _one_person_lab_dsh_opl_oplGatewayAccount_signIn_result$schema,
       },
-      sourceLocation: {"file":"src/gateway/host/account-service.ts","line":288,"column":9},
+      sourceLocation: {"file":"src/gateway/host/account-service.ts","line":297,"column":9},
     },
     {
       id: '@one-person-lab/dsh-opl#oplGatewayAccount/signOut',
@@ -3037,7 +3039,7 @@ export const TYPERT_REMOTE = {
         typeSymbol: '@one-person-lab/dsh-opl/types#GatewayAccountStatus',
         create: _one_person_lab_dsh_opl_oplGatewayAccount_signOut_result$schema,
       },
-      sourceLocation: {"file":"src/gateway/host/account-service.ts","line":484,"column":9},
+      sourceLocation: {"file":"src/gateway/host/account-service.ts","line":493,"column":9},
     },
     {
       id: '@one-person-lab/dsh-opl#oplGatewayAccount/status',
@@ -3052,7 +3054,7 @@ export const TYPERT_REMOTE = {
         typeSymbol: '@one-person-lab/dsh-opl/types#GatewayAccountStatus',
         create: _one_person_lab_dsh_opl_oplGatewayAccount_status_result$schema,
       },
-      sourceLocation: {"file":"src/gateway/host/account-service.ts","line":222,"column":9},
+      sourceLocation: {"file":"src/gateway/host/account-service.ts","line":230,"column":9},
     },
     {
       id: '@one-person-lab/dsh-opl#oplGatewayModels/activate',

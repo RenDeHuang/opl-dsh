@@ -175,7 +175,12 @@ export async function syncGatewayModels(ctx: Context): Promise<void> {
       // A pre-existing user model list is always preserved unless we can prove ownership.
       if (savedModels !== undefined && hashes[group.id] !== catalogFingerprint(savedModels))
         continue
-      const candidates = await discoverGatewayModels(ctx, { group: group.id })
+      let candidates = await discoverGatewayModels(ctx, { group: group.id })
+      // Do not make the default DeepSeek Flash route depend on the optional
+      // OpenAI-protocol group. A user can still explicitly add this channel
+      // from the model page, which is the durable opt-in boundary.
+      if (group.id === 'codex' && savedModels === undefined)
+        candidates = candidates.filter((model) => model.id !== 'deepseek-flash')
       if (!candidates.length) continue
       const snapshot = await gatewayModelSettings(ctx),
         current = snapshot.groups.find((item) => item.id === group.id)!

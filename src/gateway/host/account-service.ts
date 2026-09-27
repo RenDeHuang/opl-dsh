@@ -93,7 +93,13 @@ function describe(error: unknown): { code: string; message: string } {
  * @returns the canonical key name.
  */
 export function gatewayKeyName(group: GatewayGroupName = 'DeepSeek'): string {
-  return `OPL DSH · ${hostname()} · ${group}`
+  const definition = GATEWAY_GROUPS.find(
+    (item) =>
+      item.name === group ||
+      item.keyLabel === group ||
+      item.aliases.some((alias) => (alias as string) === (group as string)),
+  )
+  return `OPL DSH · ${hostname()} · ${definition?.keyLabel ?? group}`
 }
 
 /** Resolve the explicit DeepSeek group before issuing an inference key. */
@@ -101,7 +107,9 @@ function preferredGroup(
   groups: readonly { id: string; label: string }[],
   name: GatewayGroupName,
 ): string {
-  const matches = groups.filter((group) => group.label.trim().toLowerCase() === name.toLowerCase())
+  const definition = GATEWAY_GROUPS.find((group) => group.name === name)
+  const labels = new Set([name, ...(definition?.aliases ?? [])].map((value) => value.toLowerCase()))
+  const matches = groups.filter((group) => labels.has(group.label.trim().toLowerCase()))
   if (matches.length !== 1) {
     throw new GatewayControlError(
       'group_selection_required',
@@ -224,9 +232,10 @@ export class OplGatewayAccountService extends TypertRemoteService {
     const groups: GatewayGroupStatus[] = await Promise.all(
       GATEWAY_GROUPS.map(async (group) => {
         const state = this.groupStates.get(group.id)
-        const capability = known?.find(
-          (item) => item.label.trim().toLowerCase() === group.name.toLowerCase(),
+        const labels = new Set(
+          [group.name, ...(group.aliases ?? [])].map((value) => value.toLowerCase()),
         )
+        const capability = known?.find((item) => labels.has(item.label.trim().toLowerCase()))
         const flags = {
           enabled: gatewayGroupEnabled(this.ctx, group.id),
           ...(known ? { authorized: !!capability } : {}),
