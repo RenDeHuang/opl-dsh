@@ -8,13 +8,15 @@ import {
   OPL_GATEWAY_SEARCH_PROVIDER_ID,
   mapSearchStream,
   readSearchStream,
-} from '../../src/gateway/search.ts'
-import type { OplGatewaySearchProviderOptions } from '../../src/gateway/search.ts'
+} from '../../src/gateway/host/search.ts'
+import type { OplGatewaySearchProviderOptions } from '../../src/gateway/host/search.ts'
 
 const KEY = 'opl-search-key'
 
 /** The options one provider operation reads, with the endpoint pinned to a test host. */
-function options(overrides: Partial<OplGatewaySearchProviderOptions> = {}): OplGatewaySearchProviderOptions {
+function options(
+  overrides: Partial<OplGatewaySearchProviderOptions> = {},
+): OplGatewaySearchProviderOptions {
   return {
     apiKey: KEY,
     apiKeyEnv: credentialRef('OPL_GATEWAY_CODEX_API_KEY'),
@@ -34,12 +36,15 @@ function frame(event: unknown): string {
 /** A 200 event-stream body carrying the given frames, delivered as given chunks. */
 function streamResponse(chunks: readonly string[], init: ResponseInit = {}): Response {
   const encoder = new TextEncoder()
-  return new Response(new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const chunk of chunks) controller.enqueue(encoder.encode(chunk))
-      controller.close()
-    },
-  }), { status: 200, headers: { 'content-type': 'text/event-stream' }, ...init })
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(encoder.encode(chunk))
+        controller.close()
+      },
+    }),
+    { status: 200, headers: { 'content-type': 'text/event-stream' }, ...init },
+  )
 }
 
 /** Answer text plus its two citations, as the gateway reports them. */
@@ -54,13 +59,25 @@ function citedFrames(): string[] {
       type: 'response.output_text.annotation.added',
       output_index: 2,
       content_index: 0,
-      annotation: { type: 'url_citation', start_index: 0, end_index: 17, title: 'Harness home', url: 'https://a.test/harness' },
+      annotation: {
+        type: 'url_citation',
+        start_index: 0,
+        end_index: 17,
+        title: 'Harness home',
+        url: 'https://a.test/harness',
+      },
     }),
     frame({
       type: 'response.output_text.annotation.added',
       output_index: 2,
       content_index: 0,
-      annotation: { type: 'url_citation', start_index: 17, end_index: 37, title: 'Premier', url: 'https://b.test/premier' },
+      annotation: {
+        type: 'url_citation',
+        start_index: 17,
+        end_index: 37,
+        title: 'Premier',
+        url: 'https://b.test/premier',
+      },
     }),
     frame({ type: 'response.completed' }),
   ]
@@ -74,8 +91,10 @@ describe('readSearchStream', () => {
   it('collects citations, answer text, and the search count from the event stream', async () => {
     const parsed = await readSearchStream(streamResponse([citedFrames().join('')]).body!)
     expect(parsed.searches).toBe(1)
-    expect(parsed.citations.map(citation => citation.url))
-      .toEqual(['https://a.test/harness', 'https://b.test/premier'])
+    expect(parsed.citations.map((citation) => citation.url)).toEqual([
+      'https://a.test/harness',
+      'https://b.test/premier',
+    ])
     expect(parsed.itemText.get(2)).toBe(ANSWER)
   })
 
@@ -88,17 +107,18 @@ describe('readSearchStream', () => {
   })
 
   it('skips a malformed frame instead of failing an answered search', async () => {
-    const parsed = await readSearchStream(streamResponse([
-      'event: response.created\ndata: {not json\n\n',
-      ...citedFrames(),
-    ]).body!)
+    const parsed = await readSearchStream(
+      streamResponse(['event: response.created\ndata: {not json\n\n', ...citedFrames()]).body!,
+    )
     expect(parsed.citations).toHaveLength(2)
   })
 })
 
 describe('mapSearchStream', () => {
   it('maps citations to sources with the attributed text as the snippet', async () => {
-    const result = mapSearchStream(await readSearchStream(streamResponse([citedFrames().join('')]).body!))
+    const result = mapSearchStream(
+      await readSearchStream(streamResponse([citedFrames().join('')]).body!),
+    )
     expect(result.truncated).toBe(false)
     expect(result.sources).toEqual([
       { url: 'https://a.test/harness', title: 'Harness home', snippet: 'DeepSeek Harness ' },
@@ -107,27 +127,36 @@ describe('mapSearchStream', () => {
   })
 
   it('reports a search that ran without citeable annotations rather than inventing sources', async () => {
-    const parsed = await readSearchStream(streamResponse([
-      frame({ type: 'response.web_search_call.completed' }),
-      frame({ type: 'response.output_text.done', output_index: 1, text: 'See https://a.test' }),
-      frame({ type: 'response.completed' }),
-    ]).body!)
+    const parsed = await readSearchStream(
+      streamResponse([
+        frame({ type: 'response.web_search_call.completed' }),
+        frame({ type: 'response.output_text.done', output_index: 1, text: 'See https://a.test' }),
+        frame({ type: 'response.completed' }),
+      ]).body!,
+    )
     expect(() => mapSearchStream(parsed)).toThrow(WebError)
     expect(() => mapSearchStream(parsed)).toThrow(/searched but returned no url_citation/)
   })
 
   it('reports a request that triggered no server-side search at all', async () => {
-    const parsed = await readSearchStream(streamResponse([
-      frame({ type: 'response.output_text.done', output_index: 1, text: 'no search here' }),
-      frame({ type: 'response.completed' }),
-    ]).body!)
+    const parsed = await readSearchStream(
+      streamResponse([
+        frame({ type: 'response.output_text.done', output_index: 1, text: 'no search here' }),
+        frame({ type: 'response.completed' }),
+      ]).body!,
+    )
     expect(() => mapSearchStream(parsed)).toThrow(/ran no web search/)
   })
 
   it('surfaces a mid-stream failure the gateway reported', async () => {
-    const parsed = await readSearchStream(streamResponse([
-      frame({ type: 'response.failed', response: { error: { message: 'upstream unavailable' } } }),
-    ]).body!)
+    const parsed = await readSearchStream(
+      streamResponse([
+        frame({
+          type: 'response.failed',
+          response: { error: { message: 'upstream unavailable' } },
+        }),
+      ]).body!,
+    )
     expect(parsed.failure).toBe('upstream unavailable')
     expect(() => mapSearchStream(parsed)).toThrow(/upstream unavailable/)
   })
@@ -157,8 +186,10 @@ describe('OplGatewaySearchProvider', () => {
       max_output_tokens: 1024,
       stream: true,
     })
-    expect(result.sources.map(source => source.url))
-      .toEqual(['https://a.test/harness', 'https://b.test/premier'])
+    expect(result.sources.map((source) => source.url)).toEqual([
+      'https://a.test/harness',
+      'https://b.test/premier',
+    ])
   })
 
   it('never resolves a gateway search against the official DeepSeek endpoint', async () => {
@@ -173,23 +204,32 @@ describe('OplGatewaySearchProvider', () => {
     const fetchMock = vi.fn(async () => streamResponse([citedFrames().join('')]))
     vi.stubGlobal('fetch', fetchMock)
     const resolveApiKey = vi.fn(async () => 'resolved-key')
-    await new OplGatewaySearchProvider(() => options({ apiKey: undefined, resolveApiKey })).search({ query: 'q' })
+    await new OplGatewaySearchProvider(() => options({ apiKey: undefined, resolveApiKey })).search({
+      query: 'q',
+    })
     expect(resolveApiKey).toHaveBeenCalledOnce()
-    expect(new Headers((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers).get('authorization'))
-      .toBe('Bearer resolved-key')
+    expect(
+      new Headers((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].headers).get(
+        'authorization',
+      ),
+    ).toBe('Bearer resolved-key')
 
     const literal = vi.fn(async () => 'resolved-key')
-    await new OplGatewaySearchProvider(() => options({ resolveApiKey: literal })).search({ query: 'q' })
+    await new OplGatewaySearchProvider(() => options({ resolveApiKey: literal })).search({
+      query: 'q',
+    })
     expect(literal).not.toHaveBeenCalled()
   })
 
   it('fails with a missing-credential code when the account holds no key', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
-    const provider = new OplGatewaySearchProvider(() => options({
-      apiKey: undefined,
-      resolveApiKey: async () => undefined,
-    }))
+    const provider = new OplGatewaySearchProvider(() =>
+      options({
+        apiKey: undefined,
+        resolveApiKey: async () => undefined,
+      }),
+    )
     await expect(provider.search({ query: 'q' })).rejects.toMatchObject({
       code: 'WEB_PROVIDER_CREDENTIAL_MISSING',
     })
@@ -199,10 +239,18 @@ describe('OplGatewaySearchProvider', () => {
   })
 
   it('names the endpoint and the provider message on an HTTP failure', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      JSON.stringify({ error: { message: 'model not enabled', type: 'invalid_request_error' } }),
-      { status: 400, headers: { 'content-type': 'application/json' } },
-    )))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              error: { message: 'model not enabled', type: 'invalid_request_error' },
+            }),
+            { status: 400, headers: { 'content-type': 'application/json' } },
+          ),
+      ),
+    )
     const provider = new OplGatewaySearchProvider(() => options())
     await expect(provider.search({ query: 'q' })).rejects.toThrow(
       /HTTP 400: model not enabled[\s\S]*https:\/\/gateway\.test\/v1\/responses/,
@@ -211,18 +259,23 @@ describe('OplGatewaySearchProvider', () => {
 
   it('reports caller cancellation as WEB_ABORTED', async () => {
     const controller = new AbortController()
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      controller.abort()
-      throw new DOMException('aborted', 'AbortError')
-    }))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        controller.abort()
+        throw new DOMException('aborted', 'AbortError')
+      }),
+    )
     const provider = new OplGatewaySearchProvider(() => options())
-    await expect(provider.search({ query: 'q' }, controller.signal))
-      .rejects.toMatchObject({ code: 'WEB_ABORTED' })
+    await expect(provider.search({ query: 'q' }, controller.signal)).rejects.toMatchObject({
+      code: 'WEB_ABORTED',
+    })
   })
 
   it('is unavailable without a resolver, a parseable endpoint, or usable limits', () => {
-    const provider = (overrides: Partial<OplGatewaySearchProviderOptions>): OplGatewaySearchProvider =>
-      new OplGatewaySearchProvider(() => options(overrides))
+    const provider = (
+      overrides: Partial<OplGatewaySearchProviderOptions>,
+    ): OplGatewaySearchProvider => new OplGatewaySearchProvider(() => options(overrides))
     expect(provider({}).available()).toBe(true)
     expect(provider({ apiKey: undefined }).available()).toBe(false)
     expect(provider({ baseURL: 'not a url' }).available()).toBe(false)

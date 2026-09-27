@@ -20,10 +20,10 @@
     ]
   },
   "include": [
-    "src/client.tsx",
-    "src/client/**/*.ts",
-    "src/client/**/*.tsx",
-    "src/generated/*.mts",
+    "src/suite/client.tsx",
+    "src/*/client/**/*.ts",
+    "src/*/client/**/*.tsx",
+    "src/generated/remote.d.mts",
     "src/client-env.d.ts"
   ]
 }

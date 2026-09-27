@@ -19,7 +19,7 @@ ELECTRON_RUN_AS_NODE=1 '<配置中的 executable>' '<本 Skill>/control.mjs' sna
 
 ## 模型 + Harness 执行组合
 
-当用户要求让另一个模型或 Harness 在同一项目执行任务时，使用组合入口。先运行 `delegate-list` 查询实际可用组合，再使用返回的精确 ID。内置组合包括 DeepSeek + DSH、Grok + Grok Build、GPT-6 Astra/Sol/Luna + Codex CLI、Claude Opus 5.5 + Claude Code。Claude 的 AWS/Kiro 与 DeepSeek 的 DeepSeek/Codex 渠道分别绑定；不能根据显示名猜测或自动换组。继承当前项目的绝对目录，任务写明目标、范围与验收要求；不自动派发整个私有对话或凭据。
+当用户要求让另一个模型或 Harness 在同一项目执行任务时，使用组合入口。Claude Opus 5.5 可以直接按默认 AWS 渠道委派；其他模型先运行 `delegate-list` 查询实际可用组合，再使用返回的精确 ID。内置组合包括 DeepSeek + DSH、Grok + Grok Build、GPT-6 Astra/Sol/Luna + Codex CLI、Claude Opus 5.5 + Claude Code。Claude Opus 5.5 未指定渠道时默认使用 AWS；只有用户明确要求 Kiro 时才选择 Kiro。DeepSeek 的 DeepSeek/Codex 渠道分别绑定；不能根据显示名猜测或自动换组。继承当前项目的绝对目录，任务写明目标、范围与验收要求；不自动派发整个私有对话或凭据。
 
 ```sh
 ELECTRON_RUN_AS_NODE=1 '<配置中的 executable>' '<本 Skill>/control.mjs' delegate \

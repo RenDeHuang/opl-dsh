@@ -11,7 +11,7 @@ import {
   readOplGatewayAccount,
   readOplGatewayBinding,
   resolveInferenceBaseURL,
-} from '../../src/gateway/opl-credentials.ts'
+} from '../../src/gateway/host/opl-credentials.ts'
 
 const roots: string[] = []
 
@@ -27,13 +27,20 @@ function privateFile(path: string, text: string): void {
 }
 
 function writeState(root: string, binding: unknown): void {
-  privateFile(join(root, 'account.json'), `${JSON.stringify({
-    surface_kind: 'opl_gateway_account_state.v1',
-    key_group_id: '22',
-    available_groups: [{ group_id: '22', label: 'DeepSeek' }],
-    status: 'connected',
-    codex_binding: binding,
-  }, undefined, 2)}\n`)
+  privateFile(
+    join(root, 'account.json'),
+    `${JSON.stringify(
+      {
+        surface_kind: 'opl_gateway_account_state.v1',
+        key_group_id: '22',
+        available_groups: [{ group_id: '22', label: 'DeepSeek' }],
+        status: 'connected',
+        codex_binding: binding,
+      },
+      undefined,
+      2,
+    )}\n`,
+  )
 }
 
 afterEach(() => {
@@ -42,42 +49,76 @@ afterEach(() => {
 
 describe('gateway state location', () => {
   it('defaults below the home directory and honors the override', () => {
-    expect(oplGatewayStateDirectory('/Users/example', {}, 'darwin'))
-      .toBe('/Users/example/Library/Application Support/OPL/state/gateway')
-    expect(oplGatewayStateDirectory('/Users/example', { OPL_GATEWAY_STATE_ROOT: '/custom/state' }, 'darwin'))
-      .toBe('/custom/state')
-    expect(oplGatewayStateDirectory('/Users/example', { OPL_GATEWAY_STATE_ROOT: '  ' }, 'darwin'))
-      .toBe('/Users/example/Library/Application Support/OPL/state/gateway')
+    expect(oplGatewayStateDirectory('/Users/example', {}, 'darwin')).toBe(
+      '/Users/example/Library/Application Support/OPL/state/gateway',
+    )
+    expect(
+      oplGatewayStateDirectory(
+        '/Users/example',
+        { OPL_GATEWAY_STATE_ROOT: '/custom/state' },
+        'darwin',
+      ),
+    ).toBe('/custom/state')
+    expect(
+      oplGatewayStateDirectory('/Users/example', { OPL_GATEWAY_STATE_ROOT: '  ' }, 'darwin'),
+    ).toBe('/Users/example/Library/Application Support/OPL/state/gateway')
   })
 
   it('uses the Windows application-data roots instead of the macOS layout', () => {
-    expect(oplGatewayStateDirectories('C:\\Users\\Example', {
-      APPDATA: 'C:\\Users\\Example\\AppData\\Roaming',
-      LOCALAPPDATA: 'C:\\Users\\Example\\AppData\\Local',
-    }, 'win32')).toEqual([
+    expect(
+      oplGatewayStateDirectories(
+        'C:\\Users\\Example',
+        {
+          APPDATA: 'C:\\Users\\Example\\AppData\\Roaming',
+          LOCALAPPDATA: 'C:\\Users\\Example\\AppData\\Local',
+        },
+        'win32',
+      ),
+    ).toEqual([
       'C:\\Users\\Example\\AppData\\Roaming\\OPL\\state\\gateway',
       'C:\\Users\\Example\\AppData\\Local\\OPL\\state\\gateway',
     ])
   })
 
   it('offers every Windows root once and ignores blank ones', () => {
-    expect(oplGatewayStateDirectories('C:\\Users\\Example', { APPDATA: 'C:\\shared', LOCALAPPDATA: 'C:\\shared' }, 'win32'))
-      .toEqual(['C:\\shared\\OPL\\state\\gateway'])
-    expect(oplGatewayStateDirectories('C:\\Users\\Example', { APPDATA: '  ', LOCALAPPDATA: 'C:\\local' }, 'win32'))
-      .toEqual(['C:\\local\\OPL\\state\\gateway'])
+    expect(
+      oplGatewayStateDirectories(
+        'C:\\Users\\Example',
+        { APPDATA: 'C:\\shared', LOCALAPPDATA: 'C:\\shared' },
+        'win32',
+      ),
+    ).toEqual(['C:\\shared\\OPL\\state\\gateway'])
+    expect(
+      oplGatewayStateDirectories(
+        'C:\\Users\\Example',
+        { APPDATA: '  ', LOCALAPPDATA: 'C:\\local' },
+        'win32',
+      ),
+    ).toEqual(['C:\\local\\OPL\\state\\gateway'])
   })
 
   it('has no Windows candidate when no root is defined, and still answers with a path', () => {
     expect(oplGatewayStateDirectories('C:\\Users\\Example', {}, 'win32')).toEqual([])
-    expect(oplGatewayStateDirectory('C:\\Users\\Example', {}, 'win32'))
-      .toBe('C:\\Users\\Example\\OPL\\state\\gateway')
+    expect(oplGatewayStateDirectory('C:\\Users\\Example', {}, 'win32')).toBe(
+      'C:\\Users\\Example\\OPL\\state\\gateway',
+    )
   })
 
   it('honors the override ahead of every platform layout', () => {
-    expect(oplGatewayStateDirectories('/Users/example', { OPL_GATEWAY_STATE_ROOT: 'D:\\opl\\state' }, 'win32'))
-      .toEqual(['D:\\opl\\state'])
-    expect(oplGatewayStateDirectories('/Users/example', { OPL_GATEWAY_STATE_ROOT: 'D:\\opl\\state' }, 'darwin'))
-      .toEqual(['D:\\opl\\state'])
+    expect(
+      oplGatewayStateDirectories(
+        '/Users/example',
+        { OPL_GATEWAY_STATE_ROOT: 'D:\\opl\\state' },
+        'win32',
+      ),
+    ).toEqual(['D:\\opl\\state'])
+    expect(
+      oplGatewayStateDirectories(
+        '/Users/example',
+        { OPL_GATEWAY_STATE_ROOT: 'D:\\opl\\state' },
+        'darwin',
+      ),
+    ).toEqual(['D:\\opl\\state'])
   })
 })
 
@@ -85,7 +126,10 @@ describe('binding discovery', () => {
   it('reads the bound client configuration and provider', () => {
     const root = scratch()
     writeState(root, { config_path: '/tmp/client/config.toml', provider_id: 'gflab' })
-    expect(readOplGatewayBinding(root)).toEqual({ configPath: '/tmp/client/config.toml', providerId: 'gflab' })
+    expect(readOplGatewayBinding(root)).toEqual({
+      configPath: '/tmp/client/config.toml',
+      providerId: 'gflab',
+    })
   })
 
   it('reports no binding without a signed-in account', () => {
@@ -133,15 +177,21 @@ experimental_bearer_token = "sk-other-key"
 `
 
   it('extracts exactly the named provider section', () => {
-    expect(readBoundGatewayKey(document, 'gflab'))
-      .toEqual({ key: 'sk-account-key', baseURL: 'https://gateway.example/v1' })
-    expect(readBoundGatewayKey(document, 'other'))
-      .toEqual({ key: 'sk-other-key', baseURL: undefined })
+    expect(readBoundGatewayKey(document, 'gflab')).toEqual({
+      key: 'sk-account-key',
+      baseURL: 'https://gateway.example/v1',
+    })
+    expect(readBoundGatewayKey(document, 'other')).toEqual({
+      key: 'sk-other-key',
+      baseURL: undefined,
+    })
   })
 
   it('reports nothing for an absent provider or a tokenless section', () => {
     expect(readBoundGatewayKey(document, 'missing')).toBeUndefined()
-    expect(readBoundGatewayKey('[model_providers.gflab]\nname = "gflab"\n', 'gflab')).toBeUndefined()
+    expect(
+      readBoundGatewayKey('[model_providers.gflab]\nname = "gflab"\n', 'gflab'),
+    ).toBeUndefined()
   })
 })
 
@@ -151,16 +201,24 @@ describe('credential import', () => {
     const config = join(scratch(), 'config.toml')
     privateFile(config, '[model_providers.gflab]\nexperimental_bearer_token = "sk-account-key"\n')
     writeState(root, { config_path: config, provider_id: 'gflab' })
-    expect(importOplGatewayKey({ stateDirectory: root }))
-      .toEqual({ key: 'sk-account-key', baseURL: OPL_GATEWAY_INFERENCE_BASE_URL, providerId: 'gflab' })
+    expect(importOplGatewayKey({ stateDirectory: root })).toEqual({
+      key: 'sk-account-key',
+      baseURL: OPL_GATEWAY_INFERENCE_BASE_URL,
+      providerId: 'gflab',
+    })
   })
 
   it('honors an endpoint OPL deliberately bound to the key', () => {
     const root = scratch()
     const config = join(scratch(), 'config.toml')
-    privateFile(config, '[model_providers.gflab]\nbase_url = "https://self-hosted.example/v1"\nexperimental_bearer_token = "sk-legacy"\n')
+    privateFile(
+      config,
+      '[model_providers.gflab]\nbase_url = "https://self-hosted.example/v1"\nexperimental_bearer_token = "sk-legacy"\n',
+    )
     writeState(root, { config_path: config, provider_id: 'gflab' })
-    expect(importOplGatewayKey({ stateDirectory: root })?.baseURL).toBe('https://self-hosted.example/v1')
+    expect(importOplGatewayKey({ stateDirectory: root })?.baseURL).toBe(
+      'https://self-hosted.example/v1',
+    )
   })
 
   it('upgrades the gateway\u2019s old host name to the canonical one', () => {
@@ -169,9 +227,14 @@ describe('credential import', () => {
     // A binding written before the service moved still names the old host.
     // Calling it would work, and would keep this machine pinned to a name OPL
     // itself has moved off.
-    privateFile(config, '[model_providers.gflab]\nbase_url = "https://gflabtoken.cn/v1"\nexperimental_bearer_token = "sk-moved"\n')
+    privateFile(
+      config,
+      '[model_providers.gflab]\nbase_url = "https://gflabtoken.cn/v1"\nexperimental_bearer_token = "sk-moved"\n',
+    )
     writeState(root, { config_path: config, provider_id: 'gflab' })
-    expect(importOplGatewayKey({ stateDirectory: root })?.baseURL).toBe(OPL_GATEWAY_INFERENCE_BASE_URL)
+    expect(importOplGatewayKey({ stateDirectory: root })?.baseURL).toBe(
+      OPL_GATEWAY_INFERENCE_BASE_URL,
+    )
   })
 
   it('rejects a provider the caller does not expect', () => {
@@ -179,7 +242,9 @@ describe('credential import', () => {
     const config = join(scratch(), 'config.toml')
     privateFile(config, '[model_providers.gflab]\nexperimental_bearer_token = "sk-account-key"\n')
     writeState(root, { config_path: config, provider_id: 'gflab' })
-    expect(importOplGatewayKey({ stateDirectory: root, providerId: 'someone-else' })).toBeUndefined()
+    expect(
+      importOplGatewayKey({ stateDirectory: root, providerId: 'someone-else' }),
+    ).toBeUndefined()
   })
 
   it('reports nothing when the bound client configuration is gone', () => {
@@ -210,15 +275,22 @@ describe('credential import', () => {
 
 describe('recorded account', () => {
   function writeAccount(root: string, status: string, snapshot: Record<string, unknown>): void {
-    privateFile(join(root, 'account.json'), `${JSON.stringify({
-      surface_kind: 'opl_gateway_account_state.v1',
-      key_group_id: '22',
-      available_groups: [{ group_id: '22', label: 'DeepSeek' }],
-      status,
-      snapshot,
-      observed_at: '2026-09-19T00:00:00.000Z',
-      stale_after: '2026-09-19T01:00:00.000Z',
-    }, undefined, 2)}\n`)
+    privateFile(
+      join(root, 'account.json'),
+      `${JSON.stringify(
+        {
+          surface_kind: 'opl_gateway_account_state.v1',
+          key_group_id: '22',
+          available_groups: [{ group_id: '22', label: 'DeepSeek' }],
+          status,
+          snapshot,
+          observed_at: '2026-09-19T00:00:00.000Z',
+          stale_after: '2026-09-19T01:00:00.000Z',
+        },
+        undefined,
+        2,
+      )}\n`,
+    )
   }
 
   it('reads the account and its usage totals', () => {
@@ -268,8 +340,12 @@ describe('endpoint resolution', () => {
 
   it('recognizes a legacy host regardless of a trailing slash', () => {
     expect(resolveInferenceBaseURL('https://gflabtoken.cn/v1')).toBe(OPL_GATEWAY_INFERENCE_BASE_URL)
-    expect(resolveInferenceBaseURL('https://gflabtoken.cn/v1/')).toBe(OPL_GATEWAY_INFERENCE_BASE_URL)
-    expect(resolveInferenceBaseURL('  https://gflabtoken.cn/v1  ')).toBe(OPL_GATEWAY_INFERENCE_BASE_URL)
+    expect(resolveInferenceBaseURL('https://gflabtoken.cn/v1/')).toBe(
+      OPL_GATEWAY_INFERENCE_BASE_URL,
+    )
+    expect(resolveInferenceBaseURL('  https://gflabtoken.cn/v1  ')).toBe(
+      OPL_GATEWAY_INFERENCE_BASE_URL,
+    )
   })
 
   it('never rewrites a deployment that chose its own endpoint', () => {

@@ -12,7 +12,7 @@ const str={type:'string'},bool={type:'boolean'},list={type:'array',items:str}
 const tool=(name,description,properties,required=[])=>({name,description,inputSchema:{type:'object',properties,required,additionalProperties:false}})
 const tools=[
  tool('list_harness_combinations','读取可用运行配置及精确 ID。',{}),
- tool('delegate_to_harness','在同项目委派另一运行配置。默认等待交付，返回后核验实际产物并调用 review_harness_task。修改沿用 sessionId、taskId，新指令用新 operationId。权限等待时请用户处理，不要重派。',{combination:str,task:str,taskId:str,operationId:str,sessionId:str,acceptance:str,wait:bool},['task','taskId','operationId']),
+ tool('delegate_to_harness','在同项目委派另一运行配置。Claude Opus 5.5 未指定渠道时默认使用 AWS；需要 Kiro 时传入精确组合 ID。默认等待交付，返回后核验实际产物并调用 review_harness_task。修改沿用 sessionId、taskId，新指令用新 operationId。权限等待时请用户处理，不要重派。',{combination:str,model:str,task:str,taskId:str,operationId:str,sessionId:str,acceptance:str,wait:bool},['task','taskId','operationId']),
  tool('harness_result','读取或等待当前对话的子任务交付。sessionId 使用返回的 harness- 开头的任务 ID，不用 acpSessionId 或 taskId。',{sessionId:str,operationId:str,wait:bool},['sessionId']),
  tool('list_harness_tasks','列出当前对话委派的任务及验收状态。',{}),
  tool('report_harness_task','提交本子任务的交付摘要、产物、实际检查和遗留问题。',{summary:str,artifacts:list,checks:list,remaining:list},['summary']),

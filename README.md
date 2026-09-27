@@ -2,7 +2,7 @@
 
 **官方 DeepSeek Harness 桌面 + OPL 增强，一次安装即可使用。**
 
-OPL DSH 提供 OPL Gateway 登录、分组模型管理、搜索、Codex 协作和模型 + Harness 执行组合。桌面、Agent 循环、工具执行及权限管理均由官方 DSH 或所选官方 Harness 提供；增强功能以独立插件维护。
+OPL DSH 提供 OPL Gateway 登录、分组模型管理、搜索、Codex 协作和模型 + Harness 执行组合。桌面、Agent 循环、工具执行及权限管理均由官方 DSH 或所选官方 Harness 提供；增强能力在同一个插件包中按模块维护，统一安装与更新。
 
 ## 下载安装
 
@@ -33,10 +33,10 @@ Windows · x64，在 PowerShell 中运行：
 
 ### 图形安装器
 
-| 系统 | 下载 |
-| --- | --- |
-| macOS · Apple Silicon | [Mac 一键安装器（DMG）](https://github.com/gaofeng21cn/opl-dsh/releases/latest/download/OPL-DSH-Installer-mac-arm64.dmg) |
-| Windows · x64 | [Windows 一键安装器（EXE）](https://github.com/gaofeng21cn/opl-dsh/releases/latest/download/OPL-DSH-Installer-windows-x64.exe) |
+| 系统                  | 下载                                                                                                                           |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| macOS · Apple Silicon | [Mac 一键安装器（DMG）](https://github.com/gaofeng21cn/opl-dsh/releases/latest/download/OPL-DSH-Installer-mac-arm64.dmg)       |
+| Windows · x64         | [Windows 一键安装器（EXE）](https://github.com/gaofeng21cn/opl-dsh/releases/latest/download/OPL-DSH-Installer-windows-x64.exe) |
 
 1. 下载并打开对应平台的一键安装器。
 2. 安装器读取 DeepSeek 官方桌面更新清单，下载并验证当前官方桌面，再安装增强插件和 Codex Skill。首次安装需要联网。
@@ -45,6 +45,8 @@ Windows · x64，在 PowerShell 中运行：
 以后直接从 Mac「应用程序」或 Windows「开始菜单」打开官方 **DeepSeek Harness**。无需先安装 Node.js、OPL App 或 OPL Framework，也无需手动填写 Gateway 模型地址和密钥。
 
 这是在线安装器：内含 OPL 增强，安装时自动下载约 300 MB 的官方桌面。Mac 打开 DMG 中的安装应用；Windows 直接运行 EXE。OPL 安装器未签名，首次需按系统提示允许打开；下载的官方桌面会校验 SHA-512 和 DeepSeek 发布者签名。
+
+安装或升级前请退出已打开的 DeepSeek Harness。安装器会复用现有官方桌面和 profile；登录、会话、运行配置、协作设置和用户修改过的 Skill 会保留。安装完成后日常只需打开官方 **DeepSeek Harness**，不需要打开兼容维护入口。
 
 ## 增强能力
 
@@ -55,7 +57,7 @@ Windows · x64，在 PowerShell 中运行：
 - **网页搜索**：登录 OPL Gateway 后，DSH 原生 `web_search` 使用 OPL 的搜索路由；`web_fetch` 继续使用官方公共 HTTP 提供方。搜索固定使用低成本的 `gpt-6-luna`，无需额外配置；不提供独立搜索设置页或本地统计。
 - **简化首启**：统一账户选择，支持稍后登录；完成后不再重复提示，不导入其他 OPL 应用的登录状态。
 
-设置分为 **OPL Gateway、模型、Harness、组合**。Gateway 账号页负责凭据和权限；模型页复用 DSH 原生设置，OPL Gateway 作为一个来源按分组展开。Harness 页检测本机程序、版本与路径，提供官方安装更新入口。组合只引用模型、Harness 和权限，不再重复保存连接和协议。
+设置分为 **OPL Gateway、模型、Harness、运行配置、协作与自动化**。Gateway 账号页负责凭据和权限；模型页复用 DSH 原生设置，OPL Gateway 作为一个来源按分组展开。Harness 页检测本机程序、版本与路径，提供官方安装更新入口。运行配置只引用模型、Harness 和权限，不再重复保存连接和协议；协作与自动化管理任务验收、外部接入和 Skill。
 
 对话输入栏直接选择“来源 → 模型 · Harness”。原生 DSH 模型可建立自定义组合；未配置官方凭据的 DeepSeek 模型不会作为可用选项。同名模型的渠道分别保留：DeepSeek Flash 可选 DeepSeek/Codex；Claude Opus 5.5 可选 AWS/Kiro。账号页展示上游返回的分组倍率，组合始终绑定所选渠道。GPT 使用 Codex 分组。选择外部 Harness 会打开同项目关联子对话，保留原会话。
 
@@ -63,12 +65,12 @@ Codex 协作保留 DSH 的权限与问题确认。后台主动唤醒 Codex 需�
 
 当前可用组合：
 
-| 组合 | Harness | 状态 |
-| --- | --- | --- |
-| DeepSeek-V4.1-Flash + DSH | 模型：DeepSeek-V4.1-Flash；Harness：官方 DSH | 默认对话路径 |
-| GPT + Codex CLI | 模型：GPT-6 Astra / Sol / Luna；Harness：本机官方 Codex CLI | 通过官方 app-server 接入，独立保留原生会话 |
-| Claude + Claude Code | 模型：Claude Opus 5.5；Harness：本机官方 Claude Code | AWS、Kiro 渠道独立选择，通过官方 Agent SDK 接入 |
-| Grok + Grok Build | 模型：Grok 4.7；Harness：官方 Grok Build，经 ACP | 已验证 macOS；可从 DSH 工具或 Codex Skill 委派 |
+| 组合                      | Harness                                                     | 状态                                            |
+| ------------------------- | ----------------------------------------------------------- | ----------------------------------------------- |
+| DeepSeek-V4.1-Flash + DSH | 模型：DeepSeek-V4.1-Flash；Harness：官方 DSH                | 默认对话路径                                    |
+| GPT + Codex CLI           | 模型：GPT-6 Astra / Sol / Luna；Harness：本机官方 Codex CLI | 通过官方 app-server 接入，独立保留原生会话      |
+| Claude + Claude Code      | 模型：Claude Opus 5.5；Harness：本机官方 Claude Code        | AWS、Kiro 渠道独立选择，通过官方 Agent SDK 接入 |
+| Grok + Grok Build         | 模型：Grok 4.7；Harness：官方 Grok Build，经 ACP            | 已验证 macOS；可从 DSH 工具或 Codex Skill 委派  |
 
 例如，在 Codex 或 DSH 中说：“让 Grok + Grok Build 在当前项目检查这个模块，把结果返回这里。”派发方会建立关联子对话，继承项目目录，并用指定组合执行；组合详情会显示模型为 Grok 4.7。Grok 对话也能通过内置协作工具把任务交给 DeepSeek + DSH。
 
@@ -80,7 +82,7 @@ Codex Skill 的 `delegate` 返回组合会话 `id`，用它继续、等待或取
 
 ## 自动更新与数据
 
-**产品版本以实际官方桌面版本为准，OPL 修订号仅用于内部更新。** 官方桌面和 OPL 增强分别更新。安装时不固定某个官方桌面版本，而是读取 DeepSeek 官方桌面更新清单。官方桌面直接使用 `~/.dsh`，因此官方应用更新不会丢失 OPL profile；Codex Skill 和维护入口在启动前检查增强更新，每小时最多检查一次。更新会验证下载内容，并保留登录、会话、设置和协作配置。运行中的插件不会被替换，网络或校验失败时继续使用已安装版本。
+**官方桌面版本和 OPL 增强版本分别管理。** 官方桌面安装器读取 DeepSeek 官方更新清单；OPL 增强当前版本为 `0.2.5`，维护入口在启动官方桌面前每小时最多检查一次增强更新。更新包会先校验摘要和逐文件清单，运行中的 profile 不替换；网络或校验失败时继续使用已安装版本。设置 → 协作与自动化会同时显示官方桌面版本、OPL 增强版本和最近检查结果。
 
 增强插件、套件缓存和 Skill 位于官方应用外部，官方应用更新不会覆盖这些文件；OPL profile 与官方数据共同位于 `~/.dsh`。界面和安装记录显示实际官方桌面版本；不按版本号人为拒绝新版。插件 API 的实质变化仍可能需要兼容修复。日常使用直接打开官方 DeepSeek Harness，兼容入口只用于维护和增强更新。
 
@@ -103,3 +105,7 @@ Homebrew 用户可用 `brew upgrade --cask gaofeng21cn/opl-dsh/opl-dsh` 更新�
 “协作与自动化”可设置交付后自动回传与修改次数上限。相同项目内由 OPL 托管的写任务排队，只读任务可并行；这不锁定项目外部编辑器或独立启动的进程。中断任务保留原记录，不自动重发。
 
 外部 Codex Skill 仍可自动启动桌面并派发任务，与内部协作共用任务记录；可单独关闭外部接入。外部 Codex 使用等待和读取取得交付，主动唤醒仍取决于其通知桥配置。官方 Harness 各自负责 Agent 循环、工具和沙箱，OPL 负责会话关联与交付验收。
+
+## 开发维护
+
+套件采用一个仓库、一个增强包，内部按 Gateway、执行、协作、首启和兼容层划分 Host、Client 与契约。前后端 RPC 由官方 Typert 从服务源码生成，构建验证接口漂移、依赖边界和官方桌面兼容性。代码职责、运行数据和恢复路径见[开发与验证](docs/development.md)，平台资格入口见[兼容验证](docs/compatibility.md)。

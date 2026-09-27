@@ -1,0 +1,25 @@
+/** Provider-specific model fields must remain lossless JSON across the settings editor. */
+export type ModelConfigValue =
+  | string
+  | number
+  | boolean
+  | null
+  | readonly ModelConfigValue[]
+  | { [key: string]: ModelConfigValue }
+export type ModelDraft = { id: string; name?: string; contextWindow?: number } & Record<
+  string,
+  ModelConfigValue
+>
+export interface GatewayModelSettings {
+  groups: {
+    id: string
+    name: string
+    api: string
+    models: ModelDraft[]
+    enabled?: boolean
+    rateMultiplier?: number
+    ready: boolean
+    state: 'ready' | 'unauthorized' | 'unconfigured' | 'error'
+    revision: number
+  }[]
+}

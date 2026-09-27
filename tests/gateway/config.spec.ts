@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { Config, DEFAULT_API_KEY_REF, DEFAULT_MODELS, toAdapterConfig } from '../../src/gateway/config.ts'
+import {
+  Config,
+  DEFAULT_API_KEY_REF,
+  DEFAULT_MODELS,
+  toAdapterConfig,
+} from '../../src/gateway/host/config.ts'
 
 describe('gateway catalog', () => {
   it('advertises the one gateway model under its deployment name', () => {
@@ -24,13 +29,19 @@ describe('gateway settings section', () => {
 
   it('lets the account binding choose the endpoint until one is configured', () => {
     expect(toAdapterConfig({})).toMatchObject({ baseURL: 'https://gateway.medopl.com/v1' })
-    expect(toAdapterConfig({}, 'https://bound.example/v1')).toMatchObject({ baseURL: 'https://bound.example/v1' })
-    expect(toAdapterConfig({ baseURL: ' https://typed.example/v1 ' }, 'https://bound.example/v1'))
-      .toMatchObject({ baseURL: 'https://typed.example/v1' })
+    expect(toAdapterConfig({}, 'https://bound.example/v1')).toMatchObject({
+      baseURL: 'https://bound.example/v1',
+    })
+    expect(
+      toAdapterConfig({ baseURL: ' https://typed.example/v1 ' }, 'https://bound.example/v1'),
+    ).toMatchObject({ baseURL: 'https://typed.example/v1' })
   })
 
   it('carries only the fields the DeepSeek adapter accepts', () => {
-    const adapter = toAdapterConfig({ apiKeyEnv: ' CUSTOM_REF ', baseURL: ' https://example.test/v1 ' })
+    const adapter = toAdapterConfig({
+      apiKeyEnv: ' CUSTOM_REF ',
+      baseURL: ' https://example.test/v1 ',
+    })
     expect(adapter).toMatchObject({
       apiKeyEnv: 'CUSTOM_REF',
       baseURL: 'https://example.test/v1',

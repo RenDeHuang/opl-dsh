@@ -14,9 +14,10 @@
     ]
   },
   "include": [
-    "src/index.ts",
-    "src/control.ts",
-    "src/gateway/**/*.ts",
-    "src/coordination/**/*.ts"
+    "src/suite/host.ts",
+    "src/*/host/**/*.ts",
+    "src/*/contracts/**/*.ts",
+    "src/contracts/**/*.ts",
+    "src/shared/models.ts"
   ]
 }

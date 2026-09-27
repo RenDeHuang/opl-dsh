@@ -1,0 +1,60 @@
+name: Official Desktop compatibility
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'build.mjs'
+      - 'cordis.patch.yml'
+      - 'src/**'
+      - 'installer/**'
+      - 'scripts/qualif*.mjs'
+      - 'scripts/verify-official-runtime.mjs'
+      - '.github/workflows/official-compatibility.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - 'build.mjs'
+      - 'cordis.patch.yml'
+      - 'src/**'
+      - 'installer/**'
+      - 'scripts/qualif*.mjs'
+      - 'scripts/verify-official-runtime.mjs'
+      - '.github/workflows/official-compatibility.yml'
+  release:
+    types: [published]
+permissions:
+  contents: read
+jobs:
+  official-desktop:
+    name: Official Desktop (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # The official macOS distribution is arm64-only. Do not substitute Intel.
+        os: [macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run build
+      - run: node --test tests/qualification.test.mjs
+      - name: Download verified official desktop and run isolated qualification
+        run: node scripts/qualify-official-runtime.mjs --download --evidence dist/official-qualification.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: official-qualification-${{ matrix.os }}
+          path: |
+            dist/official-qualification.json
+            dist/official-qualification-client-*.png
+          if-no-files-found: error

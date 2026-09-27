@@ -15,13 +15,16 @@ import { Context } from '@deepseek-ai/cordis'
 import LlmRuntime from '@deepseek-ai/dsh-llm'
 import WebRuntime from '@deepseek-ai/dsh-web'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { TYPERT } from '../../src/generated/gateway-host.mjs'
-import { TYPERT_REMOTE } from '../../src/generated/gateway-remote.mjs'
+import { TYPERT } from '../../src/generated/host.mjs'
+import { TYPERT_REMOTE } from '../../src/generated/remote.mjs'
 import { LocalCredentialProvider } from '@deepseek-ai/dsh-credentials-local'
-import * as OplGateway from '../../src/gateway/index.ts'
-import { OplGatewayAccountService, gatewayKeyName } from '../../src/gateway/account-service.ts'
-import { GatewayControlClient, GatewayControlError } from '../../src/gateway/gateway-control.ts'
-import type { GatewayManagedKey } from '../../src/gateway/gateway-control.ts'
+import * as OplGateway from '../../src/gateway/host/index.ts'
+import { OplGatewayAccountService, gatewayKeyName } from '../../src/gateway/host/account-service.ts'
+import {
+  GatewayControlClient,
+  GatewayControlError,
+} from '../../src/gateway/host/gateway-control.ts'
+import type { GatewayManagedKey } from '../../src/gateway/host/gateway-control.ts'
 
 let home = ''
 let stateRoot = ''
@@ -69,36 +72,73 @@ describe('OPL Gateway composition', () => {
     const ctx = await mount()
     await ctx.plugin(WebRuntime, { searchProvider: 'opl-gateway', fetchProvider: 'http' })
     await ctx.credentials.set(credentialRef('OPL_GATEWAY_CODEX_API_KEY'), 'search-group-key')
-    const fetchPage = vi.fn(async () => ({ url: 'https://example.org', statusCode: 200, body: { kind: 'text' as const, content: 'official fetch' }, truncated: false }))
+    const fetchPage = vi.fn(async () => ({
+      url: 'https://example.org',
+      statusCode: 200,
+      body: { kind: 'text' as const, content: 'official fetch' },
+      truncated: false,
+    }))
     ctx.web.registerFetchProvider({ id: 'http', available: () => true, fetch: fetchPage })
-    const fetchMock = vi.fn(async () => new Response('data: ' + JSON.stringify({ type: 'response.output_text.annotation.added', output_index: 0, annotation: { type: 'url_citation', url: 'https://example.org', title: 'Example' } }) + '\n\n'))
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          'data: ' +
+            JSON.stringify({
+              type: 'response.output_text.annotation.added',
+              output_index: 0,
+              annotation: { type: 'url_citation', url: 'https://example.org', title: 'Example' },
+            }) +
+            '\n\n',
+        ),
+    )
     vi.stubGlobal('fetch', fetchMock)
     try {
-      expect((await ctx.web.search({ query: 'Example' })).sources[0]?.url).toBe('https://example.org')
+      expect((await ctx.web.search({ query: 'Example' })).sources[0]?.url).toBe(
+        'https://example.org',
+      )
       const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
       expect(url).toBe('https://gateway.medopl.com/v1/responses')
       expect(JSON.parse(String(init.body)).model).toBe('gpt-6-luna')
       expect(new Headers(init.headers).get('authorization')).toBe('Bearer search-group-key')
-      expect((await ctx.web.fetch({ url: 'https://example.org' })).body).toEqual({ kind: 'text', content: 'official fetch' })
+      expect((await ctx.web.fetch({ url: 'https://example.org' })).body).toEqual({
+        kind: 'text',
+        content: 'official fetch',
+      })
       expect(fetchPage).toHaveBeenCalledOnce()
       expect(fetchMock).toHaveBeenCalledOnce()
-    } finally { await ctx.fiber.dispose() }
+    } finally {
+      await ctx.fiber.dispose()
+    }
   })
 
   it('carries account capability fields across both Host and Client codecs', () => {
-    const status = { phase: 'connected', endpoint: 'https://gateway.test/v1', keyReady: true, codexKeyReady: true, grokKeyReady: true, harnessError: 'unavailable', activeChannel: 'grok' }
-    for (const descriptors of [TYPERT.invocations, TYPERT_REMOTE.descriptors]) {
-      expect(descriptors.map(item => item.namespace)).toEqual(Array(4).fill('oplGatewayAccount'))
-      const codec = descriptors.find(item => item.method === 'status')!.result.create()
+    const status = {
+      phase: 'connected',
+      endpoint: 'https://gateway.test/v1',
+      keyReady: true,
+      codexKeyReady: true,
+      grokKeyReady: true,
+      harnessError: 'unavailable',
+      activeChannel: 'grok',
+    }
+    for (const allDescriptors of [TYPERT.invocations, TYPERT_REMOTE.descriptors]) {
+      const descriptors = allDescriptors.filter((item) => item.namespace === 'oplGatewayAccount')
+      expect(descriptors.map((item) => item.namespace)).toEqual(Array(4).fill('oplGatewayAccount'))
+      const codec = descriptors.find((item) => item.method === 'status')!.result.create()
       expect(codec.parse(status)).toMatchObject(status)
     }
   })
 
   it('does not treat another OPL app account as this installation’s login', async () => {
-    await writeFile(join(stateRoot, 'account.json'), JSON.stringify({
-      surface_kind: 'opl_gateway_account_state.v1', status: 'connected',
-      snapshot: { email: 'previous@example.test' },
-    }), { mode: 0o600 })
+    await writeFile(
+      join(stateRoot, 'account.json'),
+      JSON.stringify({
+        surface_kind: 'opl_gateway_account_state.v1',
+        status: 'connected',
+        snapshot: { email: 'previous@example.test' },
+      }),
+      { mode: 0o600 },
+    )
     const ctx = await mount()
     const status = await ctx.get('oplGatewayAccount')?.status()
     expect(status).toMatchObject({ phase: 'signed-out', keyReady: false })
@@ -114,12 +154,14 @@ describe('OPL Gateway composition', () => {
 
   it('is declared in the native Models page directory', async () => {
     const ctx = await mount()
-    expect(ctx.llm.listConfigurableProviders()).toContainEqual(expect.objectContaining({
-      provider: 'opl-gateway',
-      displayName: 'OPL Gateway',
-      settingsNs: 'opl-suite',
-      settingsPath: ['gateway'],
-    }))
+    expect(ctx.llm.listConfigurableProviders()).toContainEqual(
+      expect.objectContaining({
+        provider: 'opl-gateway',
+        displayName: 'OPL Gateway',
+        settingsNs: 'opl-suite',
+        settingsPath: ['gateway'],
+      }),
+    )
   })
 
   it('provides the account surface the settings page drives', async () => {
@@ -140,7 +182,13 @@ describe('OPL Gateway composition', () => {
  */
 describe('account flow without any local OPL installation', () => {
   /** A scripted gateway recording what the plugin asked it to do. */
-  function gateway(options: { existingKeys?: GatewayManagedKey[]; withKey?: boolean; groups?: { id: string; label: string }[] } = {}) {
+  function gateway(
+    options: {
+      existingKeys?: GatewayManagedKey[]
+      withKey?: boolean
+      groups?: { id: string; label: string }[]
+    } = {},
+  ) {
     const calls: string[] = []
     const keys: GatewayManagedKey[] = options.existingKeys ?? []
     const control: GatewayControlClient = Object.assign(new GatewayControlClient(), {
@@ -148,7 +196,12 @@ describe('account flow without any local OPL installation', () => {
         calls.push(`login:${email}`)
         // A real instance, because the service branches on the type: a stub
         // error would exercise the "unexpected" path instead of the refusal.
-        if (password !== 'right') throw new GatewayControlError('invalid_credentials', 'The account email or password is incorrect', 401)
+        if (password !== 'right')
+          throw new GatewayControlError(
+            'invalid_credentials',
+            'The account email or password is incorrect',
+            401,
+          )
         return { accessToken: 'access', refreshToken: 'refresh-1' }
       },
       refreshSession: async (token: string) => {
@@ -157,10 +210,27 @@ describe('account flow without any local OPL installation', () => {
       },
       profile: async () => {
         calls.push('profile')
-        return { userId: '7', displayName: 'Person', email: 'person@example.test', status: 'active', balanceAmount: 12.5, balanceCurrency: 'USD' }
+        return {
+          userId: '7',
+          displayName: 'Person',
+          email: 'person@example.test',
+          status: 'active',
+          balanceAmount: 12.5,
+          balanceCurrency: 'USD',
+        }
       },
-      usage: async () => ({ todayTokens: 1024, totalTokens: 4096, todayCost: 0.25, totalCost: 3, currency: 'USD' }),
-      groups: async () => options.groups ?? [{ id: '3', label: 'Codex' }, { id: '22', label: 'DeepSeek' }],
+      usage: async () => ({
+        todayTokens: 1024,
+        totalTokens: 4096,
+        todayCost: 0.25,
+        totalCost: 3,
+        currency: 'USD',
+      }),
+      groups: async () =>
+        options.groups ?? [
+          { id: '3', label: 'Codex' },
+          { id: '22', label: 'DeepSeek' },
+        ],
       keys: async () => {
         calls.push('keys')
         return keys
@@ -168,7 +238,12 @@ describe('account flow without any local OPL installation', () => {
       createKey: async (_token: string, name: string, groupId: string | null) => {
         calls.push(`createKey:${name}:${String(groupId)}`)
         const created: GatewayManagedKey = {
-          id: groupId === '22' ? '5' : '6', name, key: 'sk-issued-' + groupId, status: 'active', groupId, raw: { id: 5, name, status: 'active' },
+          id: groupId === '22' ? '5' : '6',
+          name,
+          key: 'sk-issued-' + groupId,
+          status: 'active',
+          groupId,
+          raw: { id: 5, name, status: 'active' },
         }
         if (options.withKey !== false) keys.push(created)
         return created
@@ -206,10 +281,18 @@ describe('account flow without any local OPL installation', () => {
     expect(result.createdKey).toBe(true)
     // The key the gateway issued becomes the one the adapter resolves, and the
     // session is kept so a restart does not need another sign-in.
-    expect((await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never))?.value).toBe('sk-issued-22')
-    expect(calls).toContain('createKey:OPL DSH · ' + (await import('node:os')).hostname() + ' · DeepSeek:22')
-    expect(calls).toContain('createKey:OPL DSH · ' + (await import('node:os')).hostname() + ' · Codex:3')
-    expect((await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never))?.value).toBe('sk-issued-3')
+    expect((await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never))?.value).toBe(
+      'sk-issued-22',
+    )
+    expect(calls).toContain(
+      'createKey:OPL DSH · ' + (await import('node:os')).hostname() + ' · DeepSeek:22',
+    )
+    expect(calls).toContain(
+      'createKey:OPL DSH · ' + (await import('node:os')).hostname() + ' · Codex:3',
+    )
+    expect((await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never))?.value).toBe(
+      'sk-issued-3',
+    )
     expect(await account.status()).toMatchObject({
       phase: 'connected',
       source: 'session',
@@ -221,14 +304,26 @@ describe('account flow without any local OPL installation', () => {
   it('reuses the key a previous sign-in left behind instead of minting another', async () => {
     const name = gatewayKeyName()
     const existing: GatewayManagedKey = {
-      id: '9', name, key: 'sk-existing', status: 'active', groupId: '22', raw: { id: 9, name, status: 'active' },
+      id: '9',
+      name,
+      key: 'sk-existing',
+      status: 'active',
+      groupId: '22',
+      raw: { id: 9, name, status: 'active' },
     }
-    const { control, calls } = gateway({ existingKeys: [existing, { ...existing, id: '10', name: gatewayKeyName('Codex'), groupId: '3' }] })
+    const { control, calls } = gateway({
+      existingKeys: [
+        existing,
+        { ...existing, id: '10', name: gatewayKeyName('Codex'), groupId: '3' },
+      ],
+    })
     const { account, credentials } = await service(control)
 
     expect((await account.signIn('person@example.test', 'right')).createdKey).toBe(false)
-    expect((await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never))?.value).toBe('sk-existing')
-    expect(calls.some(call => call.startsWith('createKey'))).toBe(false)
+    expect((await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never))?.value).toBe(
+      'sk-existing',
+    )
+    expect(calls.some((call) => call.startsWith('createKey'))).toBe(false)
   })
 
   it('reports bad credentials without leaving a session behind', async () => {
@@ -239,7 +334,7 @@ describe('account flow without any local OPL installation', () => {
       code: 'opl-gateway/credentials',
     })
     expect(await account.status()).toMatchObject({ phase: 'unavailable' })
-    expect((await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never))).toBeUndefined()
+    expect(await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never)).toBeUndefined()
   })
 
   it('releases the key on sign-out and forgets the session', async () => {
@@ -261,18 +356,33 @@ describe('account flow without any local OPL installation', () => {
     const { account, credentials } = await service(control)
     await account.signIn('person@example.test', 'right')
     await credentials.unset('OPL_GATEWAY_CODEX_API_KEY' as never)
-    expect((await account.refresh()).groups).toContainEqual(expect.objectContaining({ id:'codex',state:'ready' }))
-    expect(calls.filter(call => call.startsWith('createKey:'))).toHaveLength(2)
-    expect(await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never)).toMatchObject({ value: 'sk-issued-3' })
+    expect((await account.refresh()).groups).toContainEqual(
+      expect.objectContaining({ id: 'codex', state: 'ready' }),
+    )
+    expect(calls.filter((call) => call.startsWith('createKey:'))).toHaveLength(2)
+    expect(await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never)).toMatchObject({
+      value: 'sk-issued-3',
+    })
   })
 
   it('logs in a Codex-only account and reports each group independently', async () => {
-    const ctx = await seams(), credentials = ctx.credentials
-    const { control } = gateway({ groups: [{ id:'codex',label:'Codex' }] })
-    const account = new OplGatewayAccountService(ctx, { credentialRef:()=>credentialRef('OPL_GATEWAY_DEEPSEEK_API_KEY'),endpoint:()=> 'https://gateway.medopl.com/v1',control })
-    const result=await account.signIn('person@example.test','right')
-    expect(result.status).toMatchObject({phase:'connected',keyReady:false,codexKeyReady:true})
-    expect(result.status.groups).toContainEqual(expect.objectContaining({id:'deepseek',state:'unauthorized'}))
+    const ctx = await seams(),
+      credentials = ctx.credentials
+    const { control } = gateway({ groups: [{ id: 'codex', label: 'Codex' }] })
+    const account = new OplGatewayAccountService(ctx, {
+      credentialRef: () => credentialRef('OPL_GATEWAY_DEEPSEEK_API_KEY'),
+      endpoint: () => 'https://gateway.medopl.com/v1',
+      control,
+    })
+    const result = await account.signIn('person@example.test', 'right')
+    expect(result.status).toMatchObject({
+      phase: 'connected',
+      keyReady: false,
+      codexKeyReady: true,
+    })
+    expect(result.status.groups).toContainEqual(
+      expect.objectContaining({ id: 'deepseek', state: 'unauthorized' }),
+    )
     expect(await credentials.resolve(credentialRef('OPL_GATEWAY_DEEPSEEK_API_KEY'))).toBeUndefined()
   })
 
@@ -281,17 +391,33 @@ describe('account flow without any local OPL installation', () => {
     control.groups = async () => [{ id: '22', label: 'DeepSeek' }]
     const { account } = await service(control)
     const result = await account.signIn('person@example.test', 'right')
-    expect(result.status).toMatchObject({ phase: 'connected', keyReady: true, codexKeyReady: false })
-    expect(result.status.groups).toContainEqual(expect.objectContaining({ id:'codex',state:'unauthorized' }))
+    expect(result.status).toMatchObject({
+      phase: 'connected',
+      keyReady: true,
+      codexKeyReady: false,
+    })
+    expect(result.status.groups).toContainEqual(
+      expect.objectContaining({ id: 'codex', state: 'unauthorized' }),
+    )
   })
 
   it('provisions and later releases an independent Grok group key', async () => {
-    const { control, calls } = gateway({ groups: [{ id: '3', label: 'Codex' }, { id: '22', label: 'DeepSeek' }, { id: '41', label: 'Grok' }] })
+    const { control, calls } = gateway({
+      groups: [
+        { id: '3', label: 'Codex' },
+        { id: '22', label: 'DeepSeek' },
+        { id: '41', label: 'Grok' },
+      ],
+    })
     const { account, credentials } = await service(control)
     const result = await account.signIn('person@example.test', 'right')
     expect(result.status).toMatchObject({ keyReady: true, codexKeyReady: true, grokKeyReady: true })
-    expect(calls).toContain('createKey:OPL DSH · ' + (await import('node:os')).hostname() + ' · Grok:41')
-    expect((await credentials.resolve('OPL_GATEWAY_GROK_API_KEY' as never))?.value).toBe('sk-issued-41')
+    expect(calls).toContain(
+      'createKey:OPL DSH · ' + (await import('node:os')).hostname() + ' · Grok:41',
+    )
+    expect((await credentials.resolve('OPL_GATEWAY_GROK_API_KEY' as never))?.value).toBe(
+      'sk-issued-41',
+    )
     await account.signOut()
     expect(calls).toContain('setKeyStatus:6:disabled')
     expect(await credentials.resolve('OPL_GATEWAY_GROK_API_KEY' as never)).toBeUndefined()
@@ -303,11 +429,16 @@ describe('account flow without any local OPL installation', () => {
     await account.signIn('person@example.test', 'right')
     const listKeys = control.keys.bind(control)
     control.keys = async (token, name) => {
-      if (name === gatewayKeyName('Codex')) throw new GatewayControlError('unavailable', 'temporary outage', 503)
+      if (name === gatewayKeyName('Codex'))
+        throw new GatewayControlError('unavailable', 'temporary outage', 503)
       return listKeys(token, name)
     }
-    expect((await account.refresh()).groups).toContainEqual(expect.objectContaining({ id:'codex',state:'error' }))
-    expect(await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never)).toMatchObject({ value: 'sk-issued-3' })
+    expect((await account.refresh()).groups).toContainEqual(
+      expect.objectContaining({ id: 'codex', state: 'error' }),
+    )
+    expect(await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never)).toMatchObject({
+      value: 'sk-issued-3',
+    })
   })
 
   it('renews a stored session on refresh without another sign-in', async () => {
@@ -323,7 +454,10 @@ describe('account flow without any local OPL installation', () => {
       endpoint: () => 'https://gateway.example/v1',
       control,
     })
-    expect(await restarted.refresh()).toMatchObject({ phase: 'connected', account: { email: 'person@example.test' } })
+    expect(await restarted.refresh()).toMatchObject({
+      phase: 'connected',
+      account: { email: 'person@example.test' },
+    })
     expect(calls).toContain('refresh:refresh-1')
   })
 })

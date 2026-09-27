@@ -67,10 +67,16 @@ OPL DSH 在官方桌面上提供账号自动配置、Harness 管理和组合选�
 
 ## 通用项目协作
 
-`HarnessService` 是新协作任务的唯一 owner，`harness-sessions.json` 同时保存父子关系、冻结的模型引用、任务要求、轮次、交付和验收。`control.ts` 注册官方 DSH 工具；每个外部 Harness 的私有 MCP capability 绑定真实父会话，两者调用相同的 delegate/result/report/review/cancel 方法。外部 Codex 入口单独放在 `coordination/external-codex.ts`，开关不会影响内部工具。旧 dispatch 反馈服务仅保留兼容旧记录。
+`HarnessService` 是新协作任务的唯一 owner，`harness-sessions/` 同时保存父子关系、冻结的模型引用、任务要求、轮次、交付和验收。`control.ts` 注册官方 DSH 工具；每个外部 Harness 的私有 MCP capability 绑定真实父会话，两者调用相同的 delegate/result/report/review/cancel 方法。外部 Codex 入口单独放在 `coordination/external-codex.ts`，开关不会影响内部工具。旧 dispatch 反馈服务仅保留兼容旧记录。
 
 执行状态与验收状态分开；完成轮次进入 pending 验收，父对话基于实际产物选择 accepted 或 changes_requested。后续修改沿用子会话和 taskId，使用新 operationId。原 operation 重试幂等，变更内容被拒绝。回传以持久 ID 和官方 prompt requestId 去重，只有用户显式重试创建新的交付尝试。重启不会自动重新执行未完成的轮次。
 
 项目写队列覆盖 OPL 托管会话；同步委派时父对话处于 waiting_child，子任务可执行，异步任务在写占用解除后执行。只读任务可以并发。原生 DSH 父对话繁忙时异步写子任务等待，独立原生会话和外部编辑器不在此队列控制范围。
 
 界面通过官方 conversation.input.dock 呈现原生父对话任务卡，外部对话复用 HarnessPanel 的项目列表、子任务、交付和人工验收。没有修改官方会话格式或桌面资源。
+
+## 实现边界
+
+Gateway 模型读写由独立 `oplGatewayModels` Remote 负责，不经过首启或 Harness 服务。`oplExecution` 提供运行配置、执行、协作状态及分页读取；账号、首启和 Skill 维护分别挂载。所有 Remote 从同一份服务声明生成 Host 校验和 Client 类型。
+
+会话目录按 ID 分文件保存，原全量文件保留为迁移来源；任务摘要与历史详情分别读取。程序身份、协议桥与环境构造位于各执行器适配模块；主服务管理会话关系、权限和协作规则。具体目录与恢复边界见[开发与验证](development.md)。

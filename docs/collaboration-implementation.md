@@ -14,6 +14,10 @@ Host/Client 类型检查、构建及 172 项测试通过。行为测试覆盖修
 
 ## 后续模块化整合边界
 
-功能改动保持现有路径，作为本轮协作功能基线提交；模块化搬迁由独立任务整合。主要写集：src/control.ts、src/coordination/harness.ts、harness-types.ts、control-bridge.ts、native-harness-bridge.ts、新增 external-codex.ts、src/setup-config.ts、src/client.tsx、新增 CollaborationTasks.tsx、HarnessPanel.tsx/CSS、CoordinationSection.tsx、SettingsSection.module.css、installer/skill/{control.mjs,harness-mcp.mjs,SKILL.md}、tests/coordination/harness.spec.ts。README 与架构文档同步说明当前行为。保留此前所有未提交改动；没有进行结构搬迁或改写官方会话格式。
+功能改动保持现有路径，尚未提交推送。主要写集：src/control.ts、src/coordination/harness.ts、harness-types.ts、control-bridge.ts、native-harness-bridge.ts、新增 external-codex.ts、src/setup-config.ts、src/client.tsx、新增 CollaborationTasks.tsx、HarnessPanel.tsx/CSS、CoordinationSection.tsx、SettingsSection.module.css、installer/skill/{control.mjs,harness-mcp.mjs,SKILL.md}、tests/coordination/harness.spec.ts。README 与架构文档同步说明当前行为。保留此前所有未提交改动；没有进行结构搬迁或改写官方会话格式。
 
 本机日常 profile 已更新至最终包 afdc86968764，安装包 SHA-256 与构建产物一致；官方桌面正常启动、八个运行配置可用，当前没有执行中的任务。已打开“协作与自动化”供检查。
+
+## 模块化整合说明
+
+本文中的真实模型证据来自结构重构前的协作功能验收；后续模块化继续保留该行为，最终目录、契约生成与独立官方桌面资格入口见 [开发与验证](development.md) 和 [兼容验证](compatibility.md)。历史证据不替代新构建的资格结果。

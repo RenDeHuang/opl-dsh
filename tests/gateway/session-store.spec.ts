@@ -18,8 +18,8 @@ import {
   readSession,
   writeFacts,
   writeSession,
-} from '../../src/gateway/session-store.ts'
-import type { GatewayAccountFacts } from '../../src/gateway/types.ts'
+} from '../../src/gateway/host/session-store.ts'
+import type { GatewayAccountFacts } from '../../src/gateway/contracts/account.ts'
 
 const roots: string[] = []
 
@@ -38,12 +38,19 @@ function credentials(options: { refuseWrite?: boolean } = {}) {
   let record: { kind: 'grant'; payload: unknown } | undefined
   const seam = {
     readRecord: vi.fn(async () => record),
-    modifyRecord: vi.fn(async (_key: string, mutate: (current: unknown) => Promise<{ kind: 'grant'; payload: unknown } | undefined>) => {
-      if (options.refuseWrite === true) throw new Error('read-only source shadows the record')
-      record = await mutate(record)
-      return record
+    modifyRecord: vi.fn(
+      async (
+        _key: string,
+        mutate: (current: unknown) => Promise<{ kind: 'grant'; payload: unknown } | undefined>,
+      ) => {
+        if (options.refuseWrite === true) throw new Error('read-only source shadows the record')
+        record = await mutate(record)
+        return record
+      },
+    ),
+    deleteRecord: vi.fn(async () => {
+      record = undefined
     }),
-    deleteRecord: vi.fn(async () => { record = undefined }),
   }
   return { seam: seam as never, snapshot: () => record }
 }
@@ -88,7 +95,9 @@ describe('session storage', () => {
 
   it('survives a store that cannot answer', async () => {
     const seam = {
-      readRecord: vi.fn(async () => { throw new Error('unavailable') }),
+      readRecord: vi.fn(async () => {
+        throw new Error('unavailable')
+      }),
       modifyRecord: vi.fn(),
       deleteRecord: vi.fn(),
     } as never
@@ -121,8 +130,17 @@ describe('facts cache', () => {
     const stored = JSON.parse(raw)
     expect(Object.keys(stored).sort()).toEqual(['facts', 'observedAt', 'version'])
     expect(Object.keys(stored.facts).sort()).toEqual([
-      'balanceAmount', 'balanceCurrency', 'displayName', 'email', 'keyName',
-      'status', 'todayCost', 'todayTokens', 'totalCost', 'totalTokens', 'usageCurrency',
+      'balanceAmount',
+      'balanceCurrency',
+      'displayName',
+      'email',
+      'keyName',
+      'status',
+      'todayCost',
+      'todayTokens',
+      'totalCost',
+      'totalTokens',
+      'usageCurrency',
     ])
     expect(raw).not.toMatch(/sk-/)
   })
@@ -131,9 +149,15 @@ describe('facts cache', () => {
     const home = scratch()
     writeFileSync(join(home, FACTS_FILENAME), 'not json')
     expect(readFacts(home)).toBeUndefined()
-    writeFileSync(join(home, FACTS_FILENAME), JSON.stringify({ version: 2, observedAt: 'x', facts: {} }))
+    writeFileSync(
+      join(home, FACTS_FILENAME),
+      JSON.stringify({ version: 2, observedAt: 'x', facts: {} }),
+    )
     expect(readFacts(home)).toBeUndefined()
-    writeFileSync(join(home, FACTS_FILENAME), JSON.stringify({ version: 1, observedAt: 7, facts: {} }))
+    writeFileSync(
+      join(home, FACTS_FILENAME),
+      JSON.stringify({ version: 1, observedAt: 7, facts: {} }),
+    )
     expect(readFacts(home)).toBeUndefined()
   })
 
