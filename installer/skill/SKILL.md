@@ -41,7 +41,7 @@ ELECTRON_RUN_AS_NODE=1 '<配置中的 executable>' '<本 Skill>/control.mjs' del
 ELECTRON_RUN_AS_NODE=1 '<配置中的 executable>' '<本 Skill>/control.mjs' delegate-cancel --session harness-id
 ```
 
-`delegate` 和 `delegate-prompt` 等待至终态或授权等待；超时、断线后先用 `delegate-snapshot`/`delegate-wait` 核对，重试沿用原 operation，不换 ID 重派。Host 重启后的未完成轮次标记 `interrupted`，不自动重发；新的指令用新 operation 恢复原生会话。只有结果与实际产物吻合才报告完成。
+`delegate` 提交后立即返回持久会话 ID；用 `delegate-wait` 等待终态，或用 `delegate-snapshot` 查看进度。`delegate-prompt` 等待至终态或授权等待。超时、断线后先读取原会话，不能换 ID 重派。Host 重启后的未完成轮次标记 `interrupted`，不自动重发；新的指令用新 operation 恢复原生会话。只有结果与实际产物吻合才报告完成。
 
 遇到 `waiting_approval` 或 `waiting_input`：外部 Harness 的权限请求在 DSH 组合工作区由用户决定，DSH 权限和问题在原生会话中处理。告知用户具体等待位置，然后等待或读取原任务；不能由派发方代替用户授权。各组合使用指定渠道的独立 Key；缺少官方 CLI、激活状态或对应 Key 时报告未就绪，不回退其他模型、分组或 Harness。
 

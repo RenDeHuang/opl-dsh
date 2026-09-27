@@ -150,7 +150,7 @@ async function openCodex() {
     })().catch(() => rejectTurn?.(Error('Codex 消息处理失败')))
   })
   await codexRequest('initialize', {
-    clientInfo: { name: 'opl-dsh', version: '0.2.10' },
+    clientInfo: { name: 'opl-dsh', version: '0.2.11' },
     capabilities: { experimentalApi: true },
   })
   child.stdin!.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n')
@@ -178,11 +178,25 @@ async function claudePrompt(text: string, effort?: string) {
   const disallowed = readonly
     ? ['Bash', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Task']
     : ['Agent', 'Task']
+  const abortController = new AbortController()
+  let responseTimedOut = false
+  let firstResponseTimer: ReturnType<typeof setTimeout> | undefined = setTimeout(
+    () => {
+      responseTimedOut = true
+      abortController.abort()
+    },
+    4 * 60 * 1000,
+  )
+  const receivedResponse = () => {
+    if (firstResponseTimer) clearTimeout(firstResponseTimer)
+    firstResponseTimer = undefined
+  }
   claude = query({
     prompt: text,
     options: {
       cwd,
       model,
+      abortController,
       ...(effort ? { effort: effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max' } : {}),
       pathToClaudeCodeExecutable: command,
       env,
@@ -230,6 +244,8 @@ async function claudePrompt(text: string, effort?: string) {
   let result: any
   try {
     for await (const event of claude) {
+      if (event.type === 'assistant' || event.type === 'result' || event.type === 'stream_event')
+        receivedResponse()
       if (event.type === 'stream_event') {
         const e = event.event
         if (e.type === 'content_block_delta' && e.delta.type === 'text_delta')
@@ -259,10 +275,15 @@ async function claudePrompt(text: string, effort?: string) {
             })
       if (event.type === 'result') result = event
     }
+  } catch (error) {
+    if (responseTimedOut) throw Error('HARNESS_TIMEOUT')
+    throw error
   } finally {
+    receivedResponse()
     claude.close()
     claude = undefined
   }
+  if (responseTimedOut) throw Error('HARNESS_TIMEOUT')
   if (cancelled) return { stopReason: 'cancelled' }
   if (!result || result.is_error || result.subtype !== 'success') {
     const status = result?.api_error_status

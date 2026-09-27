@@ -661,7 +661,7 @@ export class HarnessService {
             fs: { readTextFile: false, writeTextFile: false },
             terminal: false,
           },
-          clientInfo: { name: 'opl-dsh', version: '0.2.10' },
+          clientInfo: { name: 'opl-dsh', version: '0.2.11' },
         }),
       )
       if (init.protocolVersion !== 1) throw Error('Harness 未协商 ACP v1')

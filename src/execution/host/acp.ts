@@ -13,6 +13,8 @@ const harnessFailure = (code: unknown) => {
       return '所选渠道当前限流，请稍后重试。原任务未自动重发。'
     case 'HARNESS_MODEL':
       return '所选模型未被当前渠道接受，请检查模型配置。原任务未自动重发。'
+    case 'HARNESS_TIMEOUT':
+      return '所选渠道长时间没有返回首个响应，已停止本轮请求。请检查渠道状态后再手动发起新指令；原任务未自动重发。'
     default:
       return 'Harness 执行未完成，请检查安装、渠道和模型。原任务未自动重发。'
   }

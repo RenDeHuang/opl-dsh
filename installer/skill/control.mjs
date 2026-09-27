@@ -25,6 +25,13 @@ async function harnessRpc(method,input,timeout=600000){
  const response=await fetch(binding.endpoint,{method:'POST',headers:{authorization:'Bearer '+binding.token,'content-type':'application/json'},body:JSON.stringify({namespace:'harness',method,args:input,timeoutMs:timeout}),signal:AbortSignal.timeout(timeout+5000)})
  const result=await response.json();if(!result.ok)throw new Error(result.error);return result.value
 }
+async function waitHarness(input){
+ try{return await harnessRpc('wait',input,60000)}
+ catch(error){
+  if(!/等待已取消|TimeoutError|fetch failed|timeout/i.test(String(error)))throw error
+  return harnessRpc('snapshot',{sessionId:input.sessionId})
+ }
+}
 if(['delegate-review','delegate-tasks','delegate','delegate-start','delegate-prompt','delegate-cancel','delegate-snapshot','delegate-list','delegate-wait'].includes(command)){
  const origin={kind:'codex',sessionId:process.env.CODEX_THREAD_ID??'manual'}
  if(command==='delegate-review'){if(!args.session||!args.operation||!args.decision||!args['note-file'])throw Error('需要 --session --operation --decision --note-file');console.log(JSON.stringify(await harnessRpc('review',{origin,sessionId:args.session,operationId:args.operation,decision:args.decision,note:await readFile(args['note-file'],'utf8')})))}
@@ -32,7 +39,8 @@ if(['delegate-review','delegate-tasks','delegate','delegate-start','delegate-pro
  else if(command==='delegate-list')console.log(JSON.stringify(await harnessRpc('list',{})))
  else if(['delegate-cancel','delegate-snapshot','delegate-wait'].includes(command)){
   if(!args.session)throw Error('缺少 --session')
-  console.log(JSON.stringify(await harnessRpc(command.slice(9),{sessionId:args.session,...(args.operation?{operationId:args.operation}:{})})))
+  const input={sessionId:args.session,...(args.operation?{operationId:args.operation}:{})}
+  console.log(JSON.stringify(command==='delegate-wait'?await waitHarness(input):await harnessRpc(command.slice(9),input)))
  }else{
   if(command!=='delegate-prompt')for(const key of ['cwd','task'])if(!args[key])throw Error('缺少 --'+key)
   if(command!=='delegate-prompt'&&command!=='delegate'&&!args.combination)throw Error('缺少 --combination')
@@ -43,7 +51,7 @@ if(['delegate-review','delegate-tasks','delegate','delegate-start','delegate-pro
    if(!isAbsolute(args['prompt-file']))throw Error('--prompt-file 必须为绝对路径')
    text=await readFile(args['prompt-file'],'utf8');if(!text.trim())throw Error('任务不能为空')
   }
-  if(command==='delegate'){console.log(JSON.stringify(await harnessRpc('delegate',{origin,...(args.combination?{combination:args.combination}:{}),...(args.model?{model:args.model}:{}),cwd:args.cwd,taskId:args.task,operationId:args.operation,task:text,...(args.session?{sessionId:args.session}:{})})));process.exit(0)}
+ if(command==='delegate'){console.log(JSON.stringify(await harnessRpc('delegate',{origin,...(args.combination?{combination:args.combination}:{}),...(args.model?{model:args.model}:{}),cwd:args.cwd,taskId:args.task,operationId:args.operation,task:text,wait:false,...(args.session?{sessionId:args.session}:{})})));process.exit(0)}
   const started=command==='delegate-prompt'?{id:args.session}:await harnessRpc('start',{...(args.combination?{combination:args.combination}:{}),...(args.model?{model:args.model}:{}),cwd:args.cwd,taskId:args.task,origin,...(args.session?{existingSessionId:args.session}:{})})
   if(command==='delegate-start')console.log(JSON.stringify(started))
   else{
@@ -51,7 +59,7 @@ if(['delegate-review','delegate-tasks','delegate','delegate-start','delegate-pro
    await harnessRpc('prompt',{sessionId:started.id,text,operationId:args.operation})
    // The Host records acceptance and results, so a disconnect can be reconciled
    // without sending the prompt again. Permission waits return immediately.
-   console.log(JSON.stringify(await harnessRpc('wait',{sessionId:started.id,operationId:args.operation})))
+   console.log(JSON.stringify(await waitHarness({sessionId:started.id,operationId:args.operation})))
   }
  }
 } else if(command==='dispatch'){
