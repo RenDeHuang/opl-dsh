@@ -16,7 +16,7 @@ echo '正在下载并校验 OPL DSH 增强…'
 for FILE in SHA256SUMS OPL-DSH-Enhancements.zip; do
   curl --fail --silent --show-error --location --retry 2 --max-time 120 --proto '=https' --proto-redir '=https' "$BASE/download/$TAG/$FILE" -o "$STAGE/$FILE"
 done
-EXPECTED="$(awk '$2 == "OPL-DSH-Enhancements.zip" {print $1}' "$STAGE/SHA256SUMS")"
+EXPECTED="$(awk '$2 ~ /(^|\/)OPL-DSH-Enhancements\.zip$/ {print $1}' "$STAGE/SHA256SUMS")"
 [[ "$EXPECTED" =~ ^[0-9a-f]{64}$ ]] || { echo '增强包校验信息无效。' >&2; exit 1; }
 ACTUAL="$(shasum -a 256 "$STAGE/OPL-DSH-Enhancements.zip" | awk '{print $1}')"
 [[ "$ACTUAL" == "$EXPECTED" ]] || { echo '增强包校验失败，未执行安装。' >&2; exit 1; }

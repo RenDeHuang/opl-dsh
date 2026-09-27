@@ -15,7 +15,7 @@ try {
         Invoke-WebRequest -UseBasicParsing -Uri ($base + '/' + $file) -OutFile (Join-Path $stage $file) -TimeoutSec 120
     }
     $checksums = Get-Content -LiteralPath (Join-Path $stage 'SHA256SUMS') -Raw
-    $match = [regex]::Matches($checksums, '(?m)^([0-9a-f]{64})  OPL-DSH-Enhancements\.zip\r?$')
+    $match = [regex]::Matches($checksums, '(?m)^([0-9a-f]{64})  (?:[^\r\n ]+/)?OPL-DSH-Enhancements\.zip\r?$')
     if ($match.Count -ne 1) { throw '增强包校验信息无效。' }
     $archive = Join-Path $stage 'OPL-DSH-Enhancements.zip'
     $hasher = [Security.Cryptography.SHA256]::Create()
