@@ -8,7 +8,7 @@ try {
   $lock = [IO.File]::Open((Join-Path $Root 'install.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
   function Assert-OfficialSignature([string]$Path) {
     try {
-      $s = Get-AuthenticodeSignature -LiteralPath $Path
+      $s = Get-AuthenticodeSignature -LiteralPath $Path -ErrorAction SilentlyContinue
       if ($s.Status -eq 'Valid' -and $s.SignerCertificate.Subject -match '^CN="?Hangzhou DeepSeek Artificial Intelligence Co\., Ltd\.') { return }
     } catch {}
     $legacy = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -26,6 +26,8 @@ try {
     $certutil = Get-Command certutil.exe -ErrorAction SilentlyContinue
     if ($certutil) {
       & $certutil.Source -verify -urlfetch $Path *> $null
+      if ($LASTEXITCODE -eq 0) { return }
+      & $certutil.Source -verify $Path *> $null
       if ($LASTEXITCODE -eq 0) { return }
     }
     $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
