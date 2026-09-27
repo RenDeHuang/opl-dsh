@@ -14,9 +14,9 @@ export class AcpProcess {
     this.child = spawn(command, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true })
     // Always drain stderr; it may contain provider diagnostics and is never reflected into the UI.
     this.child.stderr.resume()
-    this.child.stdin.on('error', () => this.fail('Grok ACP 输入通道关闭'))
-    this.child.on('error', () => this.fail('无法启动 Grok Build，请安装官方 CLI 并检查执行路径'))
-    this.child.on('exit', () => this.fail('Grok Build 进程已结束'))
+    this.child.stdin.on('error', () => this.fail('Harness ACP 输入通道关闭'))
+    this.child.on('error', () => this.fail('无法启动 Harness，请检查官方程序与执行路径'))
+    this.child.on('exit', () => this.fail('Harness 进程已结束'))
     createInterface({ input: this.child.stdout }).on('line', line => {
       let m: Record<string, any>
       try { m = object(JSON.parse(line)) } catch { return }
@@ -25,7 +25,7 @@ export class AcpProcess {
         const p = this.pending.get(m.id)
         if (!p) return
         clearTimeout(p.timer); this.pending.delete(m.id)
-        if (m.error) p.reject(new Error(`Grok ACP 请求失败（${String(object(m.error).code ?? 'unknown')}）`))
+        if (m.error) p.reject(new Error(`Harness ACP 请求失败（${String(object(m.error).code ?? 'unknown')}）`))
         else p.resolve(m.result)
       } else if (m.method === 'session/update') this.update(m.params)
       else if ((typeof m.id === 'string' || typeof m.id === 'number') && m.method) {
@@ -41,13 +41,13 @@ export class AcpProcess {
     this.pending.clear(); this.onExit()
   }
   private send(value: object) {
-    if (this.closed) throw new Error('Grok ACP 通道已关闭')
+    if (this.closed) throw new Error('Harness ACP 通道已关闭')
     this.child.stdin.write(JSON.stringify({ jsonrpc: '2.0', ...value }) + '\n')
   }
   request(method: string, params: object, timeoutMs = 30000): Promise<unknown> {
     const id = ++this.sequence
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('Grok ACP 请求超时')); void this.dispose() }, timeoutMs)
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error('Harness ACP 请求超时')); void this.dispose() }, timeoutMs)
       this.pending.set(id, { resolve, reject, timer })
       try { this.send({ id, method, params }) } catch (e) { clearTimeout(timer); this.pending.delete(id); reject(e) }
     })

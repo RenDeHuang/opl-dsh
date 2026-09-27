@@ -7,14 +7,15 @@
  *
  */
 
+import { gatewayGroupEnabled } from './group-settings.ts'
 import { homedir, hostname } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { CODEX_API_KEY_REF, GROK_API_KEY_REF } from './config.ts'
+import { GATEWAY_GROUPS, type GatewayGroupId, type GatewayGroupName } from './groups.ts'
 import type { CredentialProvider, CredentialRef } from '@deepseek-ai/dsh-credentials'
 import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type { GatewayAccountFacts, GatewayAccountModel, GatewayAccountStatus, GatewaySignInResult } from './types.ts'
+import type { GatewayAccountFacts, GatewayAccountStatus, GatewayGroupStatus, GatewaySignInResult } from './types.ts'
 import {
   GatewayControlClient,
   GatewayControlError,
@@ -24,6 +25,8 @@ import {
 } from './gateway-control.ts'
 import { keyFingerprint, readAdoptedFingerprint, writeAdoptedFingerprint } from './adoption.ts'
 import { clearFacts, clearSession, readFacts, readSession, writeFacts, writeSession } from './session-store.ts'
+
+declare module '@deepseek-ai/cordis' { interface Context { oplGatewayAccount: OplGatewayAccountService } }
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface RemoteErrorDetailsMap {
@@ -68,12 +71,12 @@ function describe(error: unknown): { code: string; message: string } {
  * @param group - Gateway group whose independent key is named.
  * @returns the canonical key name.
  */
-export function gatewayKeyName(group: 'DeepSeek' | 'Codex' | 'Grok' = 'DeepSeek'): string {
+export function gatewayKeyName(group: GatewayGroupName = 'DeepSeek'): string {
   return `OPL DSH · ${hostname()} · ${group}`
 }
 
 /** Resolve the explicit DeepSeek group before issuing an inference key. */
-function preferredGroup(groups: readonly { id: string; label: string }[], name: 'DeepSeek' | 'Codex' | 'Grok'): string {
+function preferredGroup(groups: readonly { id: string; label: string }[], name: GatewayGroupName): string {
   const matches = groups.filter(group => group.label.trim().toLowerCase() === name.toLowerCase())
   if (matches.length !== 1) {
     throw new GatewayControlError('group_selection_required', `This account needs one available ${name} key group`)
@@ -89,11 +92,8 @@ export class OplGatewayAccountService extends TypertRemoteService {
   private facts: GatewayAccountFacts | undefined
   private source: 'session' | 'opl' | undefined
   private failure: { code: string; message: string } | undefined
-  private key: GatewayManagedKey | undefined
-  private codexKey: GatewayManagedKey | undefined
-  private grokKey: GatewayManagedKey | undefined
-  private channelFailure: string | undefined
-  private harnessFailure: string | undefined
+  private readonly managedKeys = new Map<GatewayGroupId, GatewayManagedKey>()
+  private readonly groupStates = new Map<GatewayGroupId, GatewayGroupStatus>()
   private pending: Promise<unknown> = Promise.resolve()
   private defaultControl: GatewayControlClient | undefined
 
@@ -104,12 +104,11 @@ export class OplGatewayAccountService extends TypertRemoteService {
       readonly credentialRef: () => CredentialRef
       /** Inference endpoint reported to the page. */
       readonly endpoint: () => string
-      /** Models this route advertises. */
-      readonly models: () => readonly GatewayAccountModel[]
       /** Control transport override, for tests. */
       readonly control?: GatewayControlClient
+      readonly syncModels?: () => Promise<void>
       /** Last successful channel, for the account page. */
-      readonly activeChannel?: () => 'deepseek' | 'codex' | 'grok' | undefined
+      readonly activeChannel?: () => GatewayGroupId | undefined
     },
   ) {
     // The Typert analyzer reads the service key from this call site, so it must
@@ -187,22 +186,26 @@ export class OplGatewayAccountService extends TypertRemoteService {
 
   /**
    * Current account status: what the account page renders.
-   * @returns the phase, endpoint, credential state, served models, and account facts the page presents.
+   * @returns the phase, endpoint, group-key state, and account facts the page presents.
    */
   @Remote
   async status(): Promise<GatewayAccountStatus> {
-    const codexCredential = await this.credentials()?.resolve(credentialRef(CODEX_API_KEY_REF))
-    const grokCredential = await this.credentials()?.resolve(credentialRef(GROK_API_KEY_REF))
+    const known = this.facts?.availableGroups ?? readFacts(this.home())?.facts.availableGroups
+    const groups: GatewayGroupStatus[] = await Promise.all(GATEWAY_GROUPS.map(async group => {
+      const state = this.groupStates.get(group.id)
+      const capability = known?.find(item=>item.label.trim().toLowerCase()===group.name.toLowerCase())
+      const flags = { enabled: gatewayGroupEnabled(this.ctx,group.id), ...(known?{authorized:!!capability}:{}), ...(capability?.rateMultiplier!==undefined?{rateMultiplier:capability.rateMultiplier}:{}) }
+      if (state && state.state !== 'ready') return {...state,...flags}
+      const ready = !!(await this.credentials()?.resolve(this.groupRef(group.id)))?.value
+      return { id: group.id, name: group.name, ...flags, state: known && !capability ? 'unauthorized' : ready ? 'ready' : 'unconfigured' }
+    }))
+    const ready = (id: GatewayGroupId) => groups.some(group => group.id === id && group.state === 'ready' && group.enabled!==false)
     const base = {
-      endpoint: this.options.endpoint(),
-      keyReady: await this.keyReady(),
-      models: this.options.models(),
-      codexKeyReady: codexCredential !== undefined && codexCredential.value.length > 0,
-      grokKeyReady: grokCredential !== undefined && grokCredential.value.length > 0,
+      endpoint: this.options.endpoint(), groups,
+      keyReady: ready('deepseek'), codexKeyReady: ready('codex'), grokKeyReady: ready('grok'),
       activeChannel: this.options.activeChannel?.(),
-      channelError: this.channelFailure,
-      harnessError: this.harnessFailure,
     }
+
     if (this.facts !== undefined) {
       return { ...base, phase: 'connected', source: this.source ?? 'session', account: this.facts }
     }
@@ -255,17 +258,11 @@ export class OplGatewayAccountService extends TypertRemoteService {
         this.control().usage(accessToken).catch(() => undefined),
         this.control().groups(accessToken),
       ])
-      const { key, created } = await this.ensureKey(accessToken, groups, 'DeepSeek')
-      await credentials.set(this.options.credentialRef(), key.key)
       await writeSession(credentials, session.refreshToken)
-      // Recording the adoption lets a later sign-out know this key is ours to
-      // remove, and leaves a key the operator typed on the Models page alone.
-      writeAdoptedFingerprint(this.home(), keyFingerprint(key.key))
-      this.key = key
-      await this.ensureCodexKey(accessToken, groups, credentials, true)
-      await this.ensureGrokKey(accessToken, groups, credentials, true)
-      this.facts = this.factsFrom(profile, usage, key.name)
+      const created = await this.syncGroups(accessToken, groups, credentials, true)
+      this.facts = {...this.factsFrom(profile, usage, this.managedKeys.get('deepseek')?.name ?? null), availableGroups: groups}
       this.source = 'session'
+      await this.options.syncModels?.().catch(() => undefined)
       writeFacts(this.home(), this.facts, new Date().toISOString())
       return { status: await this.status(), createdKey: created }
     }
@@ -289,7 +286,7 @@ export class OplGatewayAccountService extends TypertRemoteService {
   private async ensureKey(
     accessToken: string,
     groups: readonly { id: string; label: string }[],
-    group: 'DeepSeek' | 'Codex' | 'Grok',
+    group: GatewayGroupName,
   ): Promise<{ key: GatewayManagedKey; created: boolean }> {
     const name = gatewayKeyName(group)
     const groupId = preferredGroup(groups, group)
@@ -299,46 +296,38 @@ export class OplGatewayAccountService extends TypertRemoteService {
     return { key: await this.control().createKey(accessToken, name, groupId), created: true }
   }
 
-  private async ensureGrokKey(
-    accessToken: string,
-    groups: readonly { id: string; label: string }[],
-    credentials: CredentialProvider,
-    replacingAccount = false,
-  ): Promise<void> {
-    try {
-      const { key } = await this.ensureKey(accessToken, groups, 'Grok')
-      await credentials.set(credentialRef(GROK_API_KEY_REF), key.key)
-      writeAdoptedFingerprint(this.home(), keyFingerprint(key.key), 'grok')
-      this.grokKey = key
-      this.harnessFailure = undefined
-    } catch (error) {
-      const ref = credentialRef(GROK_API_KEY_REF)
-      const stored = await credentials.resolve(ref)
-      if ((replacingAccount || error instanceof GatewayControlError && error.code === 'group_selection_required')
-        && stored !== undefined && keyFingerprint(stored.value) === readAdoptedFingerprint(this.home(), 'grok')) await credentials.unset(ref)
-      this.grokKey = undefined
-      this.harnessFailure = 'Grok Build 组合暂不可用；请刷新账号信息并确认账号有 Grok 分组权限。'
-    }
+  private groupRef(id: GatewayGroupId): CredentialRef {
+    return id === 'deepseek' ? this.options.credentialRef() : credentialRef(GATEWAY_GROUPS.find(group => group.id === id)!.credential)
   }
 
-  private async ensureCodexKey(
-    accessToken: string, groups: readonly { id: string; label: string }[],
-    credentials: CredentialProvider, replacingAccount = false,
-  ): Promise<void> {
-    try {
-      const { key } = await this.ensureKey(accessToken, groups, 'Codex')
-      await credentials.set(credentialRef(CODEX_API_KEY_REF), key.key)
-      writeAdoptedFingerprint(this.home(), keyFingerprint(key.key), 'codex')
-      this.codexKey = key
-      this.channelFailure = undefined
-    } catch (error) {
-      const ref = credentialRef(CODEX_API_KEY_REF)
-      const stored = await credentials.resolve(ref)
-      if ((replacingAccount || error instanceof GatewayControlError && error.code === 'group_selection_required')
-        && stored !== undefined && keyFingerprint(stored.value) === readAdoptedFingerprint(this.home(), 'codex')) await credentials.unset(ref)
-      this.codexKey = undefined
-      this.channelFailure = 'Codex compatibility channel is unavailable; refresh the account to retry provisioning.'
+  private async syncGroups(accessToken: string, groups: readonly { id: string; label: string }[], credentials: CredentialProvider, replacing = false): Promise<boolean> {
+    let created = false
+    for (const group of GATEWAY_GROUPS) {
+      const ref = this.groupRef(group.id)
+      try {
+        preferredGroup(groups, group.name)
+        if (!gatewayGroupEnabled(this.ctx,group.id)) { this.groupStates.delete(group.id); continue }
+        const result = await this.ensureKey(accessToken, groups, group.name)
+        const stored = await credentials.resolve(ref)
+        if (stored && keyFingerprint(stored.value) !== readAdoptedFingerprint(this.home(), group.id) && stored.value !== result.key.key) {
+          this.groupStates.set(group.id, { id: group.id, name: group.name, state: 'error', error: '此凭据引用有手动配置，已保留，请在凭据管理中处理冲突。' })
+          continue
+        }
+        await credentials.set(ref, result.key.key)
+        writeAdoptedFingerprint(this.home(), keyFingerprint(result.key.key), group.id)
+        this.managedKeys.set(group.id, result.key)
+        this.groupStates.set(group.id, { id: group.id, name: group.name, state: 'ready' })
+        created ||= result.created
+      } catch (error) {
+        const unauthorized = error instanceof GatewayControlError && error.code === 'group_selection_required'
+        const stored = await credentials.resolve(ref)
+        if ((replacing || unauthorized) && stored && keyFingerprint(stored.value) === readAdoptedFingerprint(this.home(), group.id)) await credentials.unset(ref)
+        this.managedKeys.delete(group.id)
+        this.groupStates.set(group.id, { id: group.id, name: group.name, state: unauthorized ? 'unauthorized' : 'error',
+          error: unauthorized ? '当前账号未开放此分组' : '分组凭据同步失败，请刷新重试' })
+      }
     }
+    return created
   }
 
   /**
@@ -381,17 +370,11 @@ export class OplGatewayAccountService extends TypertRemoteService {
         this.control().groups(accessToken),
       ])
       const credentials = this.credentials()
-      if (credentials !== undefined) {
-        const { key } = await this.ensureKey(accessToken, groups, 'DeepSeek')
-        await credentials.set(this.options.credentialRef(), key.key)
-        writeAdoptedFingerprint(this.home(), keyFingerprint(key.key))
-        this.key = key
-        await this.ensureCodexKey(accessToken, groups, credentials)
-        await this.ensureGrokKey(accessToken, groups, credentials)
-      }
-      this.facts = this.factsFrom(profile, usage, this.facts?.keyName ?? this.key?.name ?? null)
+      if (credentials !== undefined) await this.syncGroups(accessToken, groups, credentials)
+      this.facts = {...this.factsFrom(profile, usage, this.managedKeys.get('deepseek')?.name ?? null), availableGroups: groups}
       this.source = 'session'
       this.failure = undefined
+      await this.options.syncModels?.().catch(() => undefined)
       writeFacts(this.home(), this.facts, new Date().toISOString())
     }
     catch (error) {
@@ -417,49 +400,20 @@ export class OplGatewayAccountService extends TypertRemoteService {
 
   private async signOutOnce(): Promise<GatewayAccountStatus> {
     const credentials = this.credentials()
-    const ref = this.options.credentialRef()
-    if (credentials !== undefined) {
-      const stored = await credentials.resolve(ref)
-      const fingerprint = stored === undefined ? undefined : keyFingerprint(stored.value)
-      if (fingerprint !== undefined && fingerprint === readAdoptedFingerprint(this.home())) {
-        await credentials.unset(ref).catch(() => undefined)
-      }
-    }
-    if (credentials !== undefined) {
-      const ref = credentialRef(CODEX_API_KEY_REF)
-      const stored = await credentials.resolve(ref)
-      if (stored !== undefined && keyFingerprint(stored.value) === readAdoptedFingerprint(this.home(), 'codex')) {
-        await credentials.unset(ref)
-      }
-    }
-    if (credentials !== undefined) {
-      const ref = credentialRef(GROK_API_KEY_REF)
-      const stored = await credentials.resolve(ref)
-      if (stored !== undefined && keyFingerprint(stored.value) === readAdoptedFingerprint(this.home(), 'grok')) {
-        await credentials.unset(ref)
-      }
-    }
-    if (this.session !== undefined && this.codexKey !== undefined) {
-      await this.control().setKeyStatus(this.session.accessToken, this.codexKey, 'disabled').catch(() => undefined)
-    }
-    if (this.session !== undefined && this.grokKey !== undefined) {
-      await this.control().setKeyStatus(this.session.accessToken, this.grokKey, 'disabled').catch(() => undefined)
-    }
-    if (this.session !== undefined && this.key !== undefined) {
-      // Best effort: the local session ends either way, and an unreachable
-      // gateway must not trap the operator in a signed-in state.
-      await this.control().setKeyStatus(this.session.accessToken, this.key, 'disabled').catch(() => undefined)
+    for (const group of GATEWAY_GROUPS) {
+      const ref = this.groupRef(group.id)
+      const stored = await credentials?.resolve(ref)
+      if (stored && keyFingerprint(stored.value) === readAdoptedFingerprint(this.home(), group.id)) await credentials!.unset(ref)
+      const key = this.managedKeys.get(group.id)
+      if (this.session && key) await this.control().setKeyStatus(this.session.accessToken, key, 'disabled').catch(() => undefined)
     }
     if (credentials !== undefined) await clearSession(credentials).catch(() => undefined)
     clearFacts(this.home())
     this.session = undefined
     this.facts = undefined
     this.source = undefined
-    this.key = undefined
-    this.codexKey = undefined
-    this.grokKey = undefined
-    this.channelFailure = undefined
-    this.harnessFailure = undefined
+    this.managedKeys.clear()
+    this.groupStates.clear()
     this.failure = undefined
     return this.status()
   }

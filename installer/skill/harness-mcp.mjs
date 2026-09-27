@@ -1,13 +1,25 @@
 /** MCP stdio adapter with a per-parent capability, never the general Host token. */
 import { createInterface } from 'node:readline'
-const endpoint=process.env.OPL_HARNESS_ENDPOINT,token=process.env.OPL_HARNESS_TOKEN
+import {readFile} from 'node:fs/promises'
+const binding=process.env.OPL_HARNESS_BINDING_FILE?JSON.parse(await readFile(process.env.OPL_HARNESS_BINDING_FILE,'utf8')):{}
+const endpoint=binding.endpoint??process.env.OPL_HARNESS_ENDPOINT,token=binding.token??process.env.OPL_HARNESS_TOKEN
 if(!endpoint||!token)throw Error('Missing OPL Harness capability')
 const call=async(method,input)=>{
  const response=await fetch(endpoint,{method:'POST',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({namespace:'harness',method,args:input,timeoutMs:600000}),signal:AbortSignal.timeout(605000)})
  const result=await response.json();if(!result.ok)throw Error(result.error);return result.value
 }
-const tools=[{name:'delegate_to_harness',description:'在当前项目创建关联的 DeepSeek + 官方 DSH 子对话，或继续原子对话。传入明确任务和稳定 task/operation ID；结果返回本对话。',inputSchema:{type:'object',properties:{task:{type:'string'},taskId:{type:'string'},operationId:{type:'string'},sessionId:{type:'string'}},required:['task','taskId','operationId'],additionalProperties:false}},
- {name:'harness_result',description:'读取或等待此对话创建的子任务结果。权限请求由人在 DSH 确认。',inputSchema:{type:'object',properties:{sessionId:{type:'string'},wait:{type:'boolean'}},required:['sessionId'],additionalProperties:false}}]
+const str={type:'string'},bool={type:'boolean'},list={type:'array',items:str}
+const tool=(name,description,properties,required=[])=>({name,description,inputSchema:{type:'object',properties,required,additionalProperties:false}})
+const tools=[
+ tool('list_harness_combinations','读取可用运行配置及精确 ID。',{}),
+ tool('delegate_to_harness','在同项目委派另一运行配置。默认等待交付，返回后核验实际产物并调用 review_harness_task。修改沿用 sessionId、taskId，新指令用新 operationId。权限等待时请用户处理，不要重派。',{combination:str,task:str,taskId:str,operationId:str,sessionId:str,acceptance:str,wait:bool},['task','taskId','operationId']),
+ tool('harness_result','读取或等待当前对话的子任务交付。sessionId 使用返回的 harness- 开头的任务 ID，不用 acpSessionId 或 taskId。',{sessionId:str,operationId:str,wait:bool},['sessionId']),
+ tool('list_harness_tasks','列出当前对话委派的任务及验收状态。',{}),
+ tool('report_harness_task','提交本子任务的交付摘要、产物、实际检查和遗留问题。',{summary:str,artifacts:list,checks:list,remaining:list},['summary']),
+ tool('review_harness_task','sessionId 必须使用 delegate 返回的 harness- 开头的 ID（不是 acpSessionId 或 taskId）。核验实际交付后记录 accepted 或 changes_requested 及依据；需要修改则继续同一个子对话。',{sessionId:str,operationId:str,decision:{enum:['accepted','changes_requested']},note:str},['sessionId','operationId','decision','note']),
+ tool('cancel_harness_task','取消当前对话委派的任务及后代。',{sessionId:str},['sessionId'])
+]
+const methods={list_harness_combinations:'list',delegate_to_harness:'delegate',harness_result:'result',list_harness_tasks:'tasks',report_harness_task:'report',review_harness_task:'review',cancel_harness_task:'cancel'}
 async function handle(m){
  if(m.id===undefined)return
  let result
@@ -18,12 +30,7 @@ async function handle(m){
   else if(m.method==='tools/call'){
    const a=m.params?.arguments??{};let value
    try{
-    if(m.params?.name==='delegate_to_harness'){
-     const session=await call('start',{taskId:a.taskId,...(a.sessionId?{existingSessionId:a.sessionId}:{})})
-     await call('prompt',{sessionId:session.id,text:a.task,operationId:a.operationId})
-     value=await call('wait',{sessionId:session.id,operationId:a.operationId})
-    }else if(m.params?.name==='harness_result')value=await call(a.wait?'wait':'snapshot',{sessionId:a.sessionId})
-    else throw Error('Unknown tool')
+    const method=methods[m.params?.name];if(!method)throw Error('Unknown tool');value=await call(method,a)
     result={content:[{type:'text',text:JSON.stringify(value)}]}
    }catch(e){result={isError:true,content:[{type:'text',text:e instanceof Error?e.message:'Harness request failed'}]}}
   }else {process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,error:{code:-32601,message:'Method not found'}})+'\n');return}

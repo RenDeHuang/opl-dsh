@@ -5,8 +5,9 @@ import type { SetupStatus } from '../setup-types.ts'
 import css from './AccountLauncher.module.css'
 
 /** The official settings shell owns navigation; this launcher chooses the account. */
-export function AccountLauncher({ wide, settingsOpen, settingsShortcut, openSettings, openOnboarding, readSetup, t }:
-  PropsRuntime<'settings.launcher'> & PropsLocale<'settings.oplGateway'> & { readSetup: () => Promise<SetupStatus> }) {
+export function AccountLauncher({ wide, settingsOpen, settingsShortcut, openSettings, openOnboarding, readSetup, bindModelNavigation, t }:
+  PropsRuntime<'settings.launcher'> & PropsLocale<'settings.oplGateway'> & { readSetup: () => Promise<SetupStatus>; bindModelNavigation: (navigate: (() => void) | undefined) => void }) {
+  useEffect(() => { bindModelNavigation(() => openOnboarding('opl-model-navigation')); return () => bindModelNavigation(undefined) }, [bindModelNavigation, openOnboarding])
   const [open, setOpen] = useState(false)
   const [connected, setConnected] = useState(false)
   useEffect(() => {

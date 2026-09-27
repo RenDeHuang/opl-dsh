@@ -1,75 +1,92 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile, copyFile, constants } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { DSH_COMBINATION, GROK_COMBINATION, type HarnessCatalog } from './harness-types.ts'
-import type { ConnectionRoute, ExecutionCatalog } from './catalog-types.ts'
+import { displayModelSource, modelRefKey, type ExecutionCatalog, type ModelRef } from './catalog-types.ts'
 export type { ExecutionCatalog } from './catalog-types.ts'
-
 export const defaultExecutionCatalog = (): ExecutionCatalog => ({
-  connections: [
-    { id: 'opl-gateway', name: 'OPL Gateway', kind: 'opl-gateway', endpoint: 'https://gateway.medopl.com/v1', authRef: 'managed', routes: [
-      { id: 'deepseek', name: 'DeepSeek 分组', protocol: 'messages', group: 'DeepSeek' },
-      { id: 'codex', name: 'Codex 分组', protocol: 'openai-completions', group: 'Codex', internal: true },
-      { id: 'grok', name: 'Grok 分组', protocol: 'responses', group: 'Grok', internal: true },
-      { id: 'gemini', name: 'Gemini 分组', protocol: 'responses', group: 'Gemini', internal: true },
-      { id: 'aws', name: 'AWS 分组', protocol: 'anthropic-messages', group: 'AWS', internal: true },
-    ] },
-    { id: 'deepseek-official', name: 'DeepSeek 官方', kind: 'deepseek-official', authRef: 'DSH 官方凭据' },
-  ],
-  models: [
-    { id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash', modelId: 'deepseek-flash', connectionId: 'opl-gateway', routeId: 'deepseek', protocol: 'messages' },
-    { id: 'grok-4.7', name: 'Grok 4.7', modelId: 'grok-4.7', connectionId: 'opl-gateway', routeId: 'grok', protocol: 'responses' },
-  ],
+  version: 2, models: [],
   harnesses: [
     { id: 'dsh', name: 'DSH', kind: 'dsh', adapter: 'native-session' },
+    { id: 'codex', name: 'Codex CLI', kind: 'acp', command: 'codex' },
+    { id: 'claude', name: 'Claude Code', kind: 'acp', command: 'claude' },
     { id: 'grok-build', name: 'Grok Build', kind: 'grok-build', adapter: 'acp-v1' },
+    { id: 'antigravity', name: 'Antigravity CLI', kind: 'acp', command: 'agy' },
   ],
   combinations: [
-    { id: DSH_COMBINATION, name: 'DeepSeek + DSH', modelId: 'deepseek-flash', harnessId: 'dsh', connectionId: 'opl-gateway', sandbox: 'workspace', isDefault: true, enabled: true },
-    { id: GROK_COMBINATION, name: 'Grok + Grok Build', modelId: 'grok-4.7', harnessId: 'grok-build', connectionId: 'opl-gateway', sandbox: 'workspace', isDefault: false, enabled: true },
+    { id: DSH_COMBINATION, name: 'DeepSeek-V4.1-Flash + DSH', modelRef: { provider:'opl-gateway',model:'deepseek-flash' }, harnessRef:'dsh',permissionPolicy:'workspace',isDefault:true,enabled:true },
+    { id: GROK_COMBINATION, name: 'Grok + Grok Build', modelRef: { provider:'opl-gateway',model:'grok::grok-4.7' },harnessRef:'grok-build',permissionPolicy:'workspace',isDefault:true,enabled:true },
   ],
 })
-
-const clone = <T,>(value: T): T => structuredClone(value)
-const text = (value: unknown, field: string, max = 200): string => {
-  if (typeof value !== 'string' || !value.trim() || value.length > max) throw Error(`执行目录的 ${field} 无效`)
+const text = (value: unknown, field: string): string => {
+  if (typeof value !== 'string' || !value.trim() || value.length > 500) throw Error(`${field} 无效`)
   return value.trim()
 }
-const validate = (value: unknown): ExecutionCatalog => {
-  if (!value || typeof value !== 'object') throw Error('执行目录格式无效')
-  const input = value as Partial<ExecutionCatalog>
-  if (!Array.isArray(input.connections) || !Array.isArray(input.models) || !Array.isArray(input.harnesses) || !Array.isArray(input.combinations)) throw Error('执行目录缺少必要分组')
-  const ids = new Set<string>()
-  const unique = (id: string) => { if (ids.has(id)) throw Error(`执行目录存在重复 ID：${id}`); ids.add(id) }
-  const connections = input.connections.map(raw => { const x = raw as any; const id = text(x.id, 'connection.id'); unique(`connection:${id}`); const routes = Array.isArray(x.routes) ? x.routes.map((rawRoute: any) => { const routeId = text(rawRoute.id, 'connection.route.id'); return { id: routeId, name: text(rawRoute.name, 'connection.route.name'), protocol: rawRoute.protocol, ...(typeof rawRoute.group === 'string' && rawRoute.group ? { group: rawRoute.group } : {}), ...(rawRoute.internal === true ? { internal: true } : {}) } }) : undefined; return { id, name: text(x.name, 'connection.name'), kind: x.kind, ...(typeof x.endpoint === 'string' && x.endpoint ? { endpoint: x.endpoint } : {}), ...(typeof x.authRef === 'string' && x.authRef ? { authRef: x.authRef } : {}), ...(routes ? { routes } : {}) } })
-  const connectionIds = new Set(connections.map(x => x.id))
-  const models = input.models.map(raw => { const x = raw as any; const id = text(x.id, 'model.id'); unique(`model:${id}`); if (!connectionIds.has(x.connectionId)) throw Error(`模型 ${id} 的连接不存在`); const connection = connections.find(item => item.id === x.connectionId)!; if (x.routeId && !connection.routes?.some((route: ConnectionRoute) => route.id === x.routeId)) throw Error(`模型 ${id} 的连接路由不存在`); return { id, name: text(x.name, 'model.name'), modelId: text(x.modelId, 'model.modelId'), connectionId: x.connectionId, protocol: x.protocol, ...(typeof x.routeId === 'string' && x.routeId ? { routeId: x.routeId } : {}) } })
-  const modelIds = new Set(models.map(x => x.id))
-  const harnesses = input.harnesses.map(raw => { const x = raw as any; const id = text(x.id, 'harness.id'); unique(`harness:${id}`); return { id, name: text(x.name, 'harness.name'), kind: x.kind, ...(typeof x.command === 'string' && x.command ? { command: x.command } : {}), ...(typeof x.adapter === 'string' && x.adapter ? { adapter: x.adapter } : {}) } })
-  const harnessIds = new Set(harnesses.map(x => x.id))
-  const combinations = input.combinations.map(raw => { const x = raw as any; const id = text(x.id, 'combination.id'); unique(`combination:${id}`); if (!modelIds.has(x.modelId) || !harnessIds.has(x.harnessId) || !connectionIds.has(x.connectionId)) throw Error(`组合 ${id} 引用不存在的模型、Harness 或连接`); if (!['read-only','workspace'].includes(x.sandbox)) throw Error(`组合 ${id} 的权限边界无效`); return { id, name: text(x.name, 'combination.name'), modelId: x.modelId, harnessId: x.harnessId, connectionId: x.connectionId, sandbox: x.sandbox, isDefault: x.isDefault === true, enabled: x.enabled !== false } })
-  if (!combinations.some(x => x.isDefault && x.enabled)) throw Error('至少需要一个启用的默认组合')
-  return { connections, models, harnesses, combinations }
+const record = (value: unknown): Record<string, any> => value && typeof value==='object' && !Array.isArray(value) ? value as Record<string,any> : {}
+/** Retain legacy choices while removing the competing connection reference. */
+export function normalizeCatalog(value: unknown): ExecutionCatalog {
+  const input=record(value)
+  if (!Array.isArray(input.harnesses) || !Array.isArray(input.combinations)) throw Error('组合目录格式无效')
+  const harnesses=input.harnesses.map(raw=>{
+    const x=record(raw); if(x.kind==='dsh'&&x.id!=='dsh')throw Error('内置 DSH 的身份不能修改'); if(!['dsh','grok-build','acp'].includes(x.kind))throw Error('Harness 类型无效')
+    return {id:text(x.id,'Harness ID'),name:text(x.name,'Harness 名称'),kind:x.kind,...(x.command?{command:text(x.command,'可执行文件')}:{}),...(x.adapter?{adapter:text(x.adapter,'适配器')}: {})}
+  })
+  if(!harnesses.some(x=>x.id==='dsh'&&x.kind==='dsh'))throw Error('不能移除内置 DSH')
+  for(const builtin of defaultExecutionCatalog().harnesses)if(!harnesses.some(item=>item.id===builtin.id))harnesses.push(builtin)
+  const harnessOrder = new Map(defaultExecutionCatalog().harnesses.map((item,index)=>[item.id,index]))
+  harnesses.sort((left,right)=>(harnessOrder.get(left.id)??Number.MAX_SAFE_INTEGER)-(harnessOrder.get(right.id)??Number.MAX_SAFE_INTEGER))
+  const combinations=input.combinations.filter((raw:any)=>raw.generated!==true).map(raw=>{
+    const x=record(raw)
+    let modelRef: ModelRef
+    if(input.version===2)modelRef={provider:text(x.modelRef?.provider,'模型来源'),model:text(x.modelRef?.model,'模型 ID')}
+    else {
+      const model=input.models?.find((model:any)=>model.id===x.modelId)
+      if(!model)throw Error('组合引用不存在的模型')
+      if(x.connectionId && x.connectionId!==model.connectionId)throw Error('旧组合的模型和连接不一致，原文件已保留，请先处理冲突')
+      modelRef={provider:model.connectionId,model:model.connectionId==='opl-gateway' && model.routeId && model.routeId!=='deepseek'?`${model.routeId}::${model.modelId}`:model.modelId}
+    }
+    const harnessRef=text(x.harnessRef??x.harnessId,'Harness 引用'),permissionPolicy=x.permissionPolicy??x.sandbox
+    if(!harnesses.some(h=>h.id===harnessRef))throw Error('组合引用不存在的 Harness')
+    if(!['read-only','workspace'].includes(permissionPolicy))throw Error('组合权限无效')
+    return {id:text(x.id,'组合 ID'),name:text(x.name,'组合名称'),modelRef,harnessRef,permissionPolicy,isDefault:x.isDefault===true,enabled:x.enabled!==false}
+  })
+  if(input.version!==2)for(const item of combinations)if(item.enabled&&!combinations.some(other=>other.enabled&&other.isDefault&&modelRefKey(other.modelRef)===modelRefKey(item.modelRef)))item.isDefault=true
+  for(const items of [harnesses,combinations])if(new Set(items.map(x=>x.id)).size!==items.length)throw Error('目录 ID 重复')
+  const defaults=combinations.filter(x=>x.isDefault&&x.enabled).map(x=>modelRefKey(x.modelRef))
+  if(new Set(defaults).size!==defaults.length)throw Error('每个模型只能有一个默认组合')
+  return {version:2,models:[],harnesses,combinations}
 }
-
 export class ExecutionCatalogStore {
-  readonly filename: string
-  private value: ExecutionCatalog = defaultExecutionCatalog()
-  private ready: Promise<void>
-  private writeQueue: Promise<void> = Promise.resolve()
-  constructor(home = dshHomePath()) { this.filename = join(home, 'profiles/desktop/execution-catalog.json'); this.ready = this.load() }
-  private async load() { try { this.value = validate(JSON.parse(await readFile(this.filename, 'utf8'))) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw Error(`执行目录无法读取，原文件已保留：${error instanceof Error ? error.message : String(error)}`) } }
-  async get(): Promise<ExecutionCatalog> { await this.ready; return clone(this.value) }
-  async set(value: unknown): Promise<ExecutionCatalog> { await this.ready; const next = validate(value); const bytes = JSON.stringify(next, null, 2) + '\n'; const operation = this.writeQueue.then(async () => { await mkdir(dirname(this.filename), { recursive: true, mode: 0o700 }); const temp = `${this.filename}.${randomUUID()}`; await writeFile(temp, bytes, { mode: 0o600 }); await rename(temp, this.filename); this.value = next }); this.writeQueue = operation.catch(() => {}); await operation; return clone(next) }
-  async dispose() { await this.writeQueue }
+  readonly filename:string
+  private value=defaultExecutionCatalog()
+  private ready:Promise<void>
+  private queue:Promise<void>=Promise.resolve()
+  constructor(home=dshHomePath()){this.filename=join(home,'profiles/desktop/execution-catalog.json');this.ready=this.load()}
+  private async load(){
+    let raw:string
+    try{raw=await readFile(this.filename,'utf8')}catch(e){if((e as NodeJS.ErrnoException).code==='ENOENT')return;throw e}
+    const parsed=JSON.parse(raw);this.value=normalizeCatalog(parsed)
+    const harnessOrderChanged=Array.isArray(parsed.harnesses)&&parsed.harnesses.map((item:any)=>item?.id).join('\0')!==this.value.harnesses.map(item=>item.id).join('\0')
+    if(parsed.version!==2||harnessOrderChanged){
+      if(parsed.version!==2) await copyFile(this.filename,this.filename+'.v1.backup',constants.COPYFILE_EXCL).catch((e:NodeJS.ErrnoException)=>{if(e.code!=='EEXIST')throw e})
+      // Preserve old model declarations in the backup; live models now come from DSH.
+      await this.persist(this.value)
+    }
+  }
+  private async persist(value:ExecutionCatalog){
+    const {models:_,...saved}=value
+    await mkdir(dirname(this.filename),{recursive:true,mode:0o700})
+    const temp=this.filename+'.'+randomUUID();await writeFile(temp,JSON.stringify(saved,null,2)+'\n',{mode:0o600});await rename(temp,this.filename)
+  }
+  async get(){await this.ready;return structuredClone(this.value)}
+  async set(input:unknown){await this.ready;const value=normalizeCatalog(input);const write=this.queue.then(async()=>{await this.persist(value);this.value=value});this.queue=write.catch(()=>{});await write;return structuredClone(value)}
+  async dispose(){await this.queue}
 }
-
-export function catalogView(catalog: ExecutionCatalog, availability: Map<string, { available: boolean; reason?: string }>): HarnessCatalog['combinations'] {
-  return catalog.combinations.filter(x => x.enabled).map(x => {
-    const model = catalog.models.find(y => y.id === x.modelId)!
-    const harness = catalog.harnesses.find(y => y.id === x.harnessId)!
-    const status = availability.get(x.id) ?? { available: false, reason: '尚未安装对应 Harness 适配器' }
-    return { id: x.id, name: x.name, model: model.name, modelId: model.modelId, harness: harness.name, available: status.available, ...(status.reason ? { reason: status.reason } : {}) }
+export function catalogView(catalog:ExecutionCatalog,availability:Map<string,{available:boolean;reason?:string}>):HarnessCatalog['combinations']{
+  return catalog.combinations.filter(x=>x.enabled).map(x=>{
+    const model=catalog.models.find(m=>modelRefKey(m.ref)===modelRefKey(x.modelRef)), harness=catalog.harnesses.find(h=>h.id===x.harnessRef)!
+    const status=availability.get(x.id)??{available:false,reason:'尚未安装对应 Harness 适配器'}
+    return {id:x.id,name:x.name,model:model?.name??x.modelRef.model,modelId:x.modelRef.model,harness:harness.name,source:displayModelSource(x.modelRef,model?.source),...status}
   })
 }

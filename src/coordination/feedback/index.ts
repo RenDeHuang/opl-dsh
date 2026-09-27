@@ -44,7 +44,6 @@
 
 import { Service, type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { brandString } from '@deepseek-ai/dsh-brand'
 import { z as stateSchema } from 'zod'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type { Session, SessionEvent, TurnEndReason } from '@deepseek-ai/dsh-session'
@@ -90,6 +89,7 @@ import type {
   WakeAdapter,
   WakeStatus,
 } from './types.ts'
+const sessionRequestId = <T extends string>(value: string) => value as T
 
 export type * from './types.ts'
 export {
@@ -381,7 +381,7 @@ function rootTaskIdOf(record: TaskRecordState): string {
  * @returns the branded request id carried by the submitted user message.
  */
 function resumeRequestIdOf(rootTaskId: string, attempt: number): SessionRequestId {
-  return brandString<SessionRequestId>(`task-feedback-resume:${rootTaskId}:${String(attempt)}`)
+  return sessionRequestId<SessionRequestId>(`task-feedback-resume:${rootTaskId}:${String(attempt)}`)
 }
 
 /**
@@ -1340,7 +1340,7 @@ export default class TaskFeedbackService extends TypertRemoteService {
       try {
         await controller.prompt({
           // oxlint-disable-next-line typescript/no-non-null-assertion -- the admission that admitted this attempt wrote the instruction id.
-          requestId: brandString<SessionRequestId>(receipt.resumeRequestId!),
+          requestId: sessionRequestId<SessionRequestId>(receipt.resumeRequestId!),
           sessionId: source.sessionId,
           mode: 'queue',
           content: [{ type: 'text', text: AUTO_RESUME_PROMPT }],

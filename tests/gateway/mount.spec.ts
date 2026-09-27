@@ -3,9 +3,9 @@
  *
  * Two facts matter and they pull in opposite directions: the route must be
  * live (so the composer can pick its model and first-run readiness is
- * satisfied), and it must NOT appear in the Models page's configurable
- * directory (because that page renders an editable profile card, and this
- * route has no profile to edit — its surface is the account page).
+ * satisfied), and it appears in the native Models page directory as the
+ * first-class OPL provider. Account authentication remains on the OPL page;
+ * the native page is the single model configuration surface.
  */
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -86,7 +86,7 @@ describe('OPL Gateway composition', () => {
   })
 
   it('carries account capability fields across both Host and Client codecs', () => {
-    const status = { phase: 'connected', endpoint: 'https://gateway.test/v1', keyReady: true, codexKeyReady: true, grokKeyReady: true, harnessError: 'unavailable', activeChannel: 'grok', models: [] }
+    const status = { phase: 'connected', endpoint: 'https://gateway.test/v1', keyReady: true, codexKeyReady: true, grokKeyReady: true, harnessError: 'unavailable', activeChannel: 'grok' }
     for (const descriptors of [TYPERT.invocations, TYPERT_REMOTE.descriptors]) {
       expect(descriptors.map(item => item.namespace)).toEqual(Array(4).fill('oplGatewayAccount'))
       const codec = descriptors.find(item => item.method === 'status')!.result.create()
@@ -112,23 +112,22 @@ describe('OPL Gateway composition', () => {
     expect(ctx.llm.listProviders()).toContainEqual({ id: 'opl-gateway', name: 'OPL Gateway' })
   })
 
-  it('stays out of the Models page directory', async () => {
+  it('is declared in the native Models page directory', async () => {
     const ctx = await mount()
-    // An entry here would render a provider row whose only action is "edit
-    // settings.yaml", the uneditable twin of the official DeepSeek card.
-    expect(ctx.llm.listConfigurableProviders().map(entry => entry.provider))
-      .not.toContain('opl-gateway')
+    expect(ctx.llm.listConfigurableProviders()).toContainEqual(expect.objectContaining({
+      provider: 'opl-gateway',
+      displayName: 'OPL Gateway',
+      settingsNs: 'opl-suite',
+      settingsPath: ['gateway'],
+    }))
   })
 
   it('provides the account surface the settings page drives', async () => {
     const ctx = await mount()
     const account = ctx.get('oplGatewayAccount')
     expect(account).toBeDefined()
-    expect(await account?.status()).toMatchObject({
-      phase: 'signed-out',
-      keyReady: false,
-      models: [{ id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash' }],
-    })
+    expect(await account?.status()).toMatchObject({ phase: 'signed-out', keyReady: false })
+    expect(await account?.status()).not.toHaveProperty('models')
   })
 })
 
@@ -191,7 +190,6 @@ describe('account flow without any local OPL installation', () => {
       account: new OplGatewayAccountService(ctx, {
         credentialRef: () => (ctx.get('llm'), 'OPL_GATEWAY_DEEPSEEK_API_KEY' as never),
         endpoint: () => 'https://gateway.example/v1',
-        models: () => [{ id: 'deepseek-flash', name: 'DeepSeek-V4.1-Flash' }],
         control,
       }),
       credentials: credentials!,
@@ -258,23 +256,33 @@ describe('account flow without any local OPL installation', () => {
     expect(await credentials.resolve('OPL_GATEWAY_DEEPSEEK_API_KEY' as never)).toBeUndefined()
   })
 
-  it('restores a missing compatibility credential when refreshing an existing login', async () => {
+  it('restores a missing Codex-group credential when refreshing an existing login', async () => {
     const { control, calls } = gateway()
     const { account, credentials } = await service(control)
     await account.signIn('person@example.test', 'right')
     await credentials.unset('OPL_GATEWAY_CODEX_API_KEY' as never)
-    expect(await account.refresh()).toMatchObject({ keyReady: true, codexKeyReady: true })
+    expect((await account.refresh()).groups).toContainEqual(expect.objectContaining({ id:'codex',state:'ready' }))
     expect(calls.filter(call => call.startsWith('createKey:'))).toHaveLength(2)
     expect(await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never)).toMatchObject({ value: 'sk-issued-3' })
   })
 
-  it('keeps the default route usable when the Codex group is unavailable', async () => {
+  it('logs in a Codex-only account and reports each group independently', async () => {
+    const ctx = await seams(), credentials = ctx.credentials
+    const { control } = gateway({ groups: [{ id:'codex',label:'Codex' }] })
+    const account = new OplGatewayAccountService(ctx, { credentialRef:()=>credentialRef('OPL_GATEWAY_DEEPSEEK_API_KEY'),endpoint:()=> 'https://gateway.medopl.com/v1',control })
+    const result=await account.signIn('person@example.test','right')
+    expect(result.status).toMatchObject({phase:'connected',keyReady:false,codexKeyReady:true})
+    expect(result.status.groups).toContainEqual(expect.objectContaining({id:'deepseek',state:'unauthorized'}))
+    expect(await credentials.resolve(credentialRef('OPL_GATEWAY_DEEPSEEK_API_KEY'))).toBeUndefined()
+  })
+
+  it('keeps the DeepSeek group usable when Codex access is unavailable', async () => {
     const { control } = gateway()
     control.groups = async () => [{ id: '22', label: 'DeepSeek' }]
     const { account } = await service(control)
     const result = await account.signIn('person@example.test', 'right')
     expect(result.status).toMatchObject({ phase: 'connected', keyReady: true, codexKeyReady: false })
-    expect(result.status.channelError).toContain('unavailable')
+    expect(result.status.groups).toContainEqual(expect.objectContaining({ id:'codex',state:'unauthorized' }))
   })
 
   it('provisions and later releases an independent Grok group key', async () => {
@@ -289,7 +297,7 @@ describe('account flow without any local OPL installation', () => {
     expect(await credentials.resolve('OPL_GATEWAY_GROK_API_KEY' as never)).toBeUndefined()
   })
 
-  it('retains the compatibility credential after a temporary refresh failure', async () => {
+  it('retains the Codex-group credential after a temporary refresh failure', async () => {
     const { control } = gateway()
     const { account, credentials } = await service(control)
     await account.signIn('person@example.test', 'right')
@@ -298,7 +306,7 @@ describe('account flow without any local OPL installation', () => {
       if (name === gatewayKeyName('Codex')) throw new GatewayControlError('unavailable', 'temporary outage', 503)
       return listKeys(token, name)
     }
-    expect(await account.refresh()).toMatchObject({ keyReady: true, codexKeyReady: true })
+    expect((await account.refresh()).groups).toContainEqual(expect.objectContaining({ id:'codex',state:'error' }))
     expect(await credentials.resolve('OPL_GATEWAY_CODEX_API_KEY' as never)).toMatchObject({ value: 'sk-issued-3' })
   })
 
@@ -313,7 +321,6 @@ describe('account flow without any local OPL installation', () => {
     const restarted = new OplGatewayAccountService(restartedCtx, {
       credentialRef: () => 'OPL_GATEWAY_DEEPSEEK_API_KEY' as never,
       endpoint: () => 'https://gateway.example/v1',
-      models: () => [],
       control,
     })
     expect(await restarted.refresh()).toMatchObject({ phase: 'connected', account: { email: 'person@example.test' } })

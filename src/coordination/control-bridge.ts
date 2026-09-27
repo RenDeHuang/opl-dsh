@@ -14,7 +14,7 @@ const allowed: Readonly<Record<string, readonly string[]>> = {
   oplSuite: ['setupUrl', 'setupStatus', 'finishSetup'],
   oplGatewayAccount: ['status', 'refresh'],
   taskFeedback: ['register', 'task', 'tasks', 'outbox', 'wake', 'ack', 'receive', 'receipts', 'consume', 'resumeFailed', 'flush'],
-  harness: ['start', 'prompt', 'cancel', 'snapshot', 'list', 'wait', 'catalog', 'save-catalog'],
+  harness: ['delegate','tasks','report','review','result','retry-delivery','start', 'prompt', 'cancel', 'snapshot', 'list', 'wait', 'catalog', 'save-catalog'],
 }
 
 /**

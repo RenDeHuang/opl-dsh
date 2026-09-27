@@ -16,6 +16,8 @@ const css = settingsCss
 
 /** Registration-side face the section drives. */
 export interface OplGatewaySectionInjected {
+  openModels?: () => void
+  setGroupActive?: (id: string, enabled: boolean) => Promise<GatewayAccountStatus>
   /** Read the current account status. */
   status: () => Promise<GatewayAccountStatus>
   /** Sign in and make the account's key this machine's inference credential. */
@@ -175,11 +177,8 @@ export function OplGatewaySection(props: OplGatewaySectionProps & { onboarding?:
       <div className={connected ? css.card : css.loginCard}>
         {connected && <div className={css.identity}>
           <span className={css.name}>{t('connected')}</span>
-          <span className={css.muted}>{state.keyReady && state.codexKeyReady ? t('channelsReady') : state.keyReady ? t('primaryReady') : t('signInToStart')}</span>
+          <span className={css.muted}>{state.groups?.some(group => group.state === 'ready') ? '可用分组已同步' : '请检查分组权限'}</span>
         </div>}
-        {state.keyReady && !state.codexKeyReady && <p className={css.muted}>{t('capabilitySyncHint')}</p>}
-        {state.keyReady && !state.grokKeyReady && <p className={css.muted}>{t('capabilitySyncHint')}</p>}
-        {!state.keyReady && connected && <p className={css.error}>{t('keyMissing')}</p>}
         {connected && account && <dl className={css.metrics}>
           <Fact label={t('balance')} value={money(account.balanceAmount, account.balanceCurrency)} />
           <Fact label={t('todayCost')} value={money(account.todayCost, account.usageCurrency)} />
@@ -204,21 +203,15 @@ export function OplGatewaySection(props: OplGatewaySectionProps & { onboarding?:
           {account?.observedAt && <Fact label={t('updated')} value={observedLabel(account.observedAt)} />}
         </dl>
       </details>}
-      {!props.onboarding && (connected || state.keyReady || state.codexKeyReady || state.grokKeyReady) && <details className={css.details}>
-        <summary>{t('advanced')}</summary>
-        <p className={css.muted}>{t('managedHint')}</p>
-        <dl className={css.facts}>
-          <Fact label={t('primaryChannel')} value={state.keyReady ? t('ready') : t('notReady')} />
-          <Fact label={t('backupChannel')} value={state.codexKeyReady ? t('ready') : t('notReady')} />
-          <Fact label={t('harnessChannel')} value={state.grokKeyReady ? t('ready') : t('notReady')} />
-          <Fact label={t('endpoint')} value={state.endpoint} wide />
-          {state.activeChannel && <Fact label={t('lastChannel')} value={state.activeChannel === 'deepseek' ? 'DeepSeek / Messages' : state.activeChannel === 'codex' ? 'Codex / OpenAI' : 'Grok Build'} />}
-          {account?.keyName && <Fact label={t('keyName')} value={account.keyName} wide />}
-        </dl>
-        {state.channelError && <p className={css.error}>{t('backupUnavailable')}</p>}
-        {state.harnessError && <p className={css.error}>{t('harnessUnavailable')}</p>}
+      {!props.onboarding && connected && <div className={css.detailsBody}>
+        <div className={css.header}><h3>可用分组</h3>{props.openModels&&<Button variant="outline" onClick={props.openModels}>选择模型</Button>}</div>
+        <p className={css.muted}>选择在此 DSH 中使用的分组。密钥自动管理，模型在“模型”页选择。停用会保留模型配置和已有对话。分组倍率相同不代表模型单价相同。</p>
+        <div className={css.modelRows}>{state.groups?.map(group=><div key={group.id} className={css.modelRow}>
+          <div><strong>{group.name}</strong><p className={css.muted}>{group.authorized===false||group.state==='unauthorized'?'账号未开放':group.authorized===true?'账号可用':'权限待刷新'}{group.rateMultiplier!==undefined?` · 分组倍率 ${group.rateMultiplier}×`:''}{group.enabled!==false&&group.state==='ready'?' · 凭据已同步':''}</p>{group.error&&group.state==='error'&&<p className={css.error}>{group.error}</p>}</div>
+          <label className={css.row}><input type="checkbox" role="switch" aria-label={`在此 DSH 激活 ${group.name}`} checked={group.enabled!==false} disabled={busy!=='idle'||group.authorized===false||group.state==='unauthorized'||!props.setGroupActive} onChange={event=>{const enabled=event.target.checked;setBusy('loading');setError(null);void props.setGroupActive?.(group.id,enabled).then(setState).catch(e=>setError(e instanceof Error?e.message:'分组设置失败')).finally(()=>setBusy('idle'))}}/>{group.enabled!==false?'已激活':'未激活'}</label>
+        </div>)}</div>
         {state.source === 'session' && <Button variant='outline' disabled={busy !== 'idle'} onClick={() => { void leave() }}>{busy === 'signing-out' ? t('signingOut') : t('signOut')}</Button>}
-      </details>}
+      </div>}
     </>}
   </div>
 }

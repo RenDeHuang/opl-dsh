@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import { OplGatewaySection, type OplGatewaySectionProps } from './gateway/OplGatewaySection.tsx'
 import type { SetupStatus } from '../setup-types.ts'
-import type { LoginChoice } from '../setup-config.ts'
+import type { LoginChoice } from '../setup-types.ts'
 import css from './SetupScreen.module.css'
 
 type Choice = Exclude<LoginChoice, 'undecided'>

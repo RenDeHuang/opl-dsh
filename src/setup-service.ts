@@ -23,13 +23,13 @@ export async function setupStatus(ctx: Context): Promise<SetupStatus> {
   const account = await ctx.typertGateway.invoke({ namespace: 'account', method: 'getState', args: {} }) as { attempt?: { phase?: string } }
   const provider = await officialProvider(ctx)
   return { completed: settings?.setupCompleted === true, choice: settings?.loginChoice ?? 'undecided',
-    gatewayReady: gateway.keyReady, ...(provider ? { officialProvider: provider } : {}),
+    gatewayReady: gateway.groups?.some(group => group.state === 'ready') ?? gateway.keyReady, ...(provider ? { officialProvider: provider } : {}),
     ...(account.attempt?.phase ? { officialPhase: account.attempt.phase } : {}) }
 }
 export async function finishSetup(ctx: Context, choice: Exclude<LoginChoice, 'undecided'>): Promise<void> {
   if (choice !== 'later') {
     const provider = choice === 'gateway' ? 'opl-gateway' : await officialProvider(ctx)
-    if (!provider || (choice === 'gateway' && !(await ctx.get('oplGatewayAccount')!.status()).keyReady)) throw new Error('账户尚未就绪，请先完成登录。')
+    if (!provider || (choice === 'gateway' && !(await setupStatus(ctx)).gatewayReady)) throw new Error('账户尚未就绪，请先完成登录。')
     const model = (await ctx.llm.listModels(provider))[0]
     if (!model) throw new Error('账户暂无可用模型，请稍后重试。')
     await ctx.agentDefaultModel.saveSelection({ provider, model: model.id })

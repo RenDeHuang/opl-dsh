@@ -321,13 +321,14 @@ export class GatewayControlClient {
    * @param accessToken - session token from {@link login} or {@link refreshSession}.
    * @returns the available groups as ids with display labels.
    */
-  async groups(accessToken: string): Promise<Array<{ id: string; label: string }>> {
+  async groups(accessToken: string): Promise<Array<{ id: string; label: string; rateMultiplier?: number }>> {
     const values = list(await this.request('/groups/available', { accessToken }), ['groups', 'items'])
     return values.flatMap((entry) => {
       if (!isRecord(entry)) return []
       const id = identifier(entry.id ?? entry.group_id ?? entry.groupId)
       if (id === null) return []
-      return [{ id, label: text(entry.name ?? entry.label) ?? id }]
+      const rateMultiplier = numeric(entry.rate_multiplier)
+      return [{ id, label: text(entry.name ?? entry.label) ?? id, ...(rateMultiplier !== null ? {rateMultiplier} : {}) }]
     })
   }
 

@@ -10,3 +10,8 @@ Source: https://github.com/deepseek-ai/deepseek-harness
 Official DeepSeek Harness Desktop is downloaded separately from DeepSeek.
 Its original resources, signature, attribution and licenses are not modified.
 OPL DSH is independently maintained and is not affiliated with DeepSeek.
+
+The native Claude bridge includes Claude Agent SDK 0.3.283.
+Copyright Anthropic PBC. All rights reserved.
+Its license notice is preserved in licenses/claude-agent-sdk.md.
+The Claude Code executable is supplied by the user's official installation.

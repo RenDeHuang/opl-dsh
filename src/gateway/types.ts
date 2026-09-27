@@ -1,3 +1,4 @@
+import type { GatewayGroupId } from './groups.ts'
 /**
  * Wire-safe account vocabulary for the OPL Gateway surface.
  *
@@ -7,14 +8,6 @@
  *
  * @module @one-person-lab/dsh-llm-opl-gateway/types
  */
-
-/** One model this route advertises to the picker. */
-export interface GatewayAccountModel {
-  /** Gateway-owned model id sent on the wire. */
-  readonly id: string
-  /** Display name the picker shows. */
-  readonly name: string
-}
 
 /**
  * What the account page should present.
@@ -27,6 +20,7 @@ export type GatewayAccountPhase = 'signed-out' | 'connected' | 'unavailable'
 
 /** The signed-in account as the page renders it. */
 export interface GatewayAccountFacts {
+  readonly availableGroups?: readonly { id: string; label: string; rateMultiplier?: number }[]
   readonly displayName: string | null
   readonly email: string | null
   readonly status: string
@@ -45,25 +39,33 @@ export interface GatewayAccountFacts {
   readonly stale?: boolean
 }
 
+export interface GatewayGroupStatus {
+  readonly id: GatewayGroupId
+  readonly name: string
+  readonly enabled?: boolean
+  readonly authorized?: boolean
+  readonly rateMultiplier?: number
+  readonly state: 'ready' | 'unauthorized' | 'unconfigured' | 'error'
+  readonly error?: string
+}
 /** One status answer, secret-free. */
 export interface GatewayAccountStatus {
   readonly phase: GatewayAccountPhase
+  readonly groups?: readonly GatewayGroupStatus[]
   /** Endpoint inference uses for this account. */
   readonly endpoint: string
   /** Whether the credential reference the adapter resolves currently resolves. */
   readonly keyReady: boolean
-  /** Independent Codex-group key for OpenAI fallback. */
+  /** Independent Codex-group key for Codex-routed models and search. */
   readonly codexKeyReady?: boolean
   /** Independent Grok-group key for the Grok Build harness. */
   readonly grokKeyReady?: boolean
-  /** Last channel that returned model output in this process. */
-  readonly activeChannel?: 'deepseek' | 'codex' | 'grok' | undefined
-  /** Provisioning failure of the optional compatibility channel. */
+  /** Last model group that returned output in this process. */
+  readonly activeChannel?: GatewayGroupId | undefined
+  /** Provisioning failure of the optional Codex model group. */
   readonly channelError?: string | undefined
   /** Provisioning failure of the optional Grok Build combination. */
   readonly harnessError?: string | undefined
-  /** Models this route serves, so the account page can name what it provides. */
-  readonly models: readonly GatewayAccountModel[]
   /**
    * Where the account facts came from: this process's own session, or the
    * binding OPL recorded. Absent when neither has one.

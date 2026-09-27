@@ -11,10 +11,10 @@ import type { DeepSeekCatalogModel } from '@deepseek-ai/dsh-llm-deepseek'
 import type { Options } from '@deepseek-ai/dsh-llm-deepseek-api-key'
 import { OPL_GATEWAY_INFERENCE_BASE_URL } from './opl-credentials.ts'
 
-/** Credential reference the Models page writes when a gateway key is typed in. */
+/** Internal credential reference populated by the OPL Gateway account service. */
 export const DEFAULT_API_KEY_REF = 'OPL_GATEWAY_DEEPSEEK_API_KEY'
 
-/** Independent Codex-group credential used only by the OpenAI compatibility channel. */
+/** Independent Codex-group credential used by Codex-routed models and search. */
 export const CODEX_API_KEY_REF = 'OPL_GATEWAY_CODEX_API_KEY'
 
 /** Independent Grok-group credential used only by the Grok Build harness. */
@@ -113,7 +113,7 @@ export function toAdapterConfig(
   return {
     ...apiKeyEnv === undefined || apiKeyEnv === '' ? {} : { apiKeyEnv },
     baseURL: baseURL === undefined || baseURL === '' ? fallbackBaseURL : baseURL,
-    ...config.models === undefined || config.models.length === 0 ? {} : { models: config.models },
+    ...config.models === undefined ? {} : { models: config.models },
     ...config.thinking === undefined ? {} : { thinking: config.thinking },
     ...config.reasoningEffort === undefined ? {} : { reasoningEffort: config.reasoningEffort },
     ...config.maxTokens === undefined ? {} : { maxTokens: config.maxTokens },

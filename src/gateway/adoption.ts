@@ -13,6 +13,7 @@
  * the Models page is never overwritten.
  */
 
+import type { GatewayGroupId } from './groups.ts'
 import { createHash } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -37,9 +38,9 @@ export function keyFingerprint(value: string): string {
  * @param channel - independently owned key group.
  * @returns the recorded fingerprint, or undefined.
  */
-export function readAdoptedFingerprint(home: string, channel: 'deepseek' | 'codex' | 'grok' = 'deepseek'): string | undefined {
+export function readAdoptedFingerprint(home: string, channel: GatewayGroupId = 'deepseek'): string | undefined {
   try {
-    const value: unknown = JSON.parse(readFileSync(join(home, channel === 'deepseek' ? ADOPTION_RECORD_FILENAME : channel === 'codex' ? 'opl-gateway-codex-key-adoption.json' : 'opl-gateway-grok-key-adoption.json'), 'utf8'))
+    const value: unknown = JSON.parse(readFileSync(join(home, channel === 'deepseek' ? ADOPTION_RECORD_FILENAME : `opl-gateway-${channel}-key-adoption.json`), 'utf8'))
     if (typeof value !== 'object' || value === null) return undefined
     const fingerprint = (value as { fingerprint?: unknown }).fingerprint
     return typeof fingerprint === 'string' && /^[a-f0-9]{64}$/u.test(fingerprint) ? fingerprint : undefined
@@ -54,8 +55,8 @@ export function readAdoptedFingerprint(home: string, channel: 'deepseek' | 'code
  * @param channel - independently owned key group.
  * @param fingerprint - fingerprint to record.
  */
-export function writeAdoptedFingerprint(home: string, fingerprint: string, channel: 'deepseek' | 'codex' | 'grok' = 'deepseek'): void {
-  const path = join(home, channel === 'deepseek' ? ADOPTION_RECORD_FILENAME : channel === 'codex' ? 'opl-gateway-codex-key-adoption.json' : 'opl-gateway-grok-key-adoption.json')
+export function writeAdoptedFingerprint(home: string, fingerprint: string, channel: GatewayGroupId = 'deepseek'): void {
+  const path = join(home, channel === 'deepseek' ? ADOPTION_RECORD_FILENAME : `opl-gateway-${channel}-key-adoption.json`)
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, `${JSON.stringify({ schemaVersion: 1, fingerprint }, undefined, 2)}\n`, { mode: 0o600 })
 }

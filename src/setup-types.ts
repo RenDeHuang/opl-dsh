@@ -1,4 +1,4 @@
-import type { LoginChoice } from './setup-config.ts'
+export type LoginChoice = 'undecided' | 'gateway' | 'official' | 'later'
 export interface SetupStatus {
   completed: boolean
   choice: LoginChoice

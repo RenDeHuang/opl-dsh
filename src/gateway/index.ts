@@ -1,4 +1,6 @@
-/** OPL-owned credentials and dual-channel routing over official DSH adapters. */
+import { gatewayGroupEnabled } from './group-settings.ts'
+import { syncGatewayModels } from './model-settings.ts'
+/** OPL-owned credentials and model-group routing over official DSH adapters. */
 
 import type { Context } from '@deepseek-ai/cordis'
 import { assertUsableApiKey, LlmAdapter, LlmError, resolveImageAttachmentAccess } from '@deepseek-ai/dsh-llm'
@@ -11,7 +13,8 @@ import type { ResolvedDeepSeekOptions } from '@deepseek-ai/dsh-llm-deepseek-api-
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import type {} from '@deepseek-ai/dsh-settings'
 import { OplGatewayAccountService } from './account-service.ts'
-import { DualChannelAdapter, OPENAI_PROVIDER } from './dual-channel.ts'
+import { GatewayModelAdapter, OPENAI_PROVIDER } from './model-router.ts'
+import { GATEWAY_GROUPS, type GatewayGroupId } from './groups.ts'
 import { Config, CODEX_API_KEY_REF, toAdapterConfig } from './config.ts'
 import { OPL_GATEWAY_INFERENCE_BASE_URL } from './opl-credentials.ts'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
@@ -89,12 +92,12 @@ class OplGatewayAdapter extends DeepSeekAdapter<ResolvedDeepSeekOptions> {
 
   override async listModels(provider: string) {
     const models = await super.listModels(provider)
-    return models.map(model => ({ ...model, name: `${model.name} + DSH` }))
+    return models
   }
 }
 
 export function apply(ctx: Context, config: Config): void {
-  const current = (): Config => config
+  const current = (): Config => (ctx.get('settings')?.describe().find(item=>item.ns==='opl-suite')?.value as {gateway?:Config} | undefined)?.gateway ?? config
   let lastRaw: Config | undefined
   let lastGood: ResolvedDeepSeekOptions | undefined
 
@@ -163,38 +166,31 @@ export function apply(ctx: Context, config: Config): void {
         ?? Promise.resolve({ fields: {}, accept: () => Promise.resolve() })
     },
   })
-  // Deliberately NOT registered as a configurable provider. This route is an
-  // account, not an API-key profile: the operator signs in on the OPL Gateway
-  // settings page, and its endpoint, protocol, and catalog are the plugin's
-  // own facts rather than fields to fill in. Declaring it configurable would
-  // add a Models-page row whose only content is "edit settings.yaml", which
-  // reads as a broken twin of the official DeepSeek card. An undeclared live
-  // route still reaches the model picker and still counts as a usable provider
-  // for first-run readiness, so the surfaces that matter keep working.
-  let activeChannel: 'deepseek' | 'codex' | 'grok' | undefined
-  // The bundle configures the official pi-ai plugin's public OpenAI route.
-  // Delegate through the public LLM service; no private adapter helpers are used.
-  const compatibility = new class extends LlmAdapter {
+  ctx.llm.registerConfigurableProviders([{
+    provider: PROVIDER, displayName: DISPLAY_NAME,
+    settingsNs: 'opl-suite', settingsPath: ['gateway'],
+  }])
+  let activeChannel: GatewayGroupId | undefined
+  const delegated = new class extends LlmAdapter {
+    override imageRequestPricing(provider: string, model: string) { return ctx.llm.imageRequestPricing(provider, model) }
+    override listModels(provider: string) {
+      return ctx.llm.listProviders().some(item => item.id === provider) ? ctx.llm.listModels(provider) : Promise.resolve([])
+    }
+    override resolveModel(provider: string, model: string, signal?: AbortSignal) { return ctx.llm.resolveModelInfo(provider, model, signal) }
     override async prepareCall(provider: string, model: string, signal?: AbortSignal) {
-      return {
-        model: await ctx.llm.resolveModelInfo(provider, model, signal),
-        stream: (request: import('@deepseek-ai/dsh-llm').GenerateOptions) =>
-          ctx.llm.stream({ ...request, provider }),
-      }
+      const info = await this.resolveModel(provider, model, signal)
+      return { model: info, stream: (request: import('@deepseek-ai/dsh-llm').GenerateOptions) => ctx.llm.stream({ ...request, provider }) }
     }
     stream(request: import('@deepseek-ai/dsh-llm').GenerateOptions) { return ctx.llm.stream(request) }
   }()
-  const dualChannel = new DualChannelAdapter(adapter, compatibility,
-    (channel) => { activeChannel = channel },
-    (code) => { ctx.logger.warn(`OPL Gateway: Messages failed (${code}); retrying this request through the Codex OpenAI channel`) },
-  )
-  ctx.llm.registerAdapter([PROVIDER], dualChannel)
-  ctx.on('llm/stream', async function* (request, next) {
-    for await (const chunk of next()) {
-      if (request.provider === OPENAI_PROVIDER) activeChannel = 'codex'
-      yield chunk
-    }
-  })
+  ctx.llm.registerAdapter([PROVIDER], new GatewayModelAdapter(GATEWAY_GROUPS.map(group => ({
+    group: group.id, provider: group.provider, adapter: group.id === 'deepseek' ? adapter : delegated,
+    available: async () => {
+      if (!gatewayGroupEnabled(ctx,group.id)) return false
+      const ref = group.id === 'deepseek' ? options().apiKeyEnv : credentialRef(group.credential)
+      return !!(await ctx.get('credentials')?.resolve(ref))?.value
+    },
+  })), group => { activeChannel = group }))
 
   let account: OplGatewayAccountService | undefined
   ctx.inject(['credentials'], (credentialsCtx) => {
@@ -206,9 +202,21 @@ export function apply(ctx: Context, config: Config): void {
       credentialRef: () => options().apiKeyEnv,
       activeChannel: () => activeChannel,
       endpoint: () => options().baseURL,
-      models: () => options().models.map(model => ({ id: model.id, name: model.name ?? model.id })),
+      syncModels: () => syncGatewayModels(ctx),
     })
-    void account.refresh().catch(() => { ctx.logger.warn('OPL Gateway account refresh failed') })
+    void account.refresh().then(async status => {
+      // A previous OPL release could leave the official DeepSeek adapter as
+      // the default even though no official key exists. Once Gateway keys are
+      // ready, point new conversations at the configured OPL route so the
+      // selector cannot open an empty official channel.
+      if (!status.groups?.some(group => group.state === 'ready')) return
+      const defaults = ctx.get('agentDefaultModel')
+      if (!defaults) return
+      const current = defaults.currentSelection()
+      if (current.provider !== 'deepseek-official' && current.provider !== 'deepseek-account') return
+      const model = (await ctx.llm.listModels(PROVIDER))[0]
+      if (model) await defaults.saveSelection({ provider: PROVIDER, model: model.id })
+    }).catch(() => { ctx.logger.warn('OPL Gateway account refresh failed') })
   })
 
   // Non-volatile Config is remounted by the Loader when its profile patch changes.
@@ -223,6 +231,7 @@ export function apply(ctx: Context, config: Config): void {
     const provider = new OplGatewaySearchProvider((): OplGatewaySearchProviderOptions => ({
       apiKeyEnv,
       resolveApiKey: async () => {
+        if(!gatewayGroupEnabled(ctx,'codex'))return undefined
         const credentials = webCtx.get('credentials')
         return credentials === undefined
           ? launchEnvironmentOf(webCtx).get(apiKeyEnv)?.value

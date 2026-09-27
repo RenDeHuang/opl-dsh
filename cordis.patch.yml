@@ -1,6 +1,9 @@
 - insert:
     - id: opl-suite
       name: '@one-person-lab/dsh-opl'
+      config:
+        gateway:
+          apiKeyEnv: OPL_GATEWAY_DEEPSEEK_API_KEY
 - id: agent-default-model
   config:
     provider: opl-gateway
@@ -13,7 +16,7 @@
   config:
     providers:
       opl-gateway-openai:
-        displayName: OPL Gateway · OpenAI
+        displayName: OPL Gateway · Codex
         api: openai-responses
         baseURL: https://gateway.medopl.com/v1
         apiKeyEnv: OPL_GATEWAY_CODEX_API_KEY
@@ -27,6 +30,37 @@
               low: low
               high: high
               max: xhigh
+          - id: gpt-6-astra
+            name: GPT-6 Astra
+          - id: gpt-6-sol
+            name: GPT-6 Sol
+          - id: gpt-6-luna
+            name: GPT-6 Luna
+      opl-gateway-aws:
+        displayName: OPL Gateway · AWS
+        api: anthropic-messages
+        baseURL: https://gateway.medopl.com/v1
+        apiKeyEnv: OPL_GATEWAY_AWS_API_KEY
+        models:
+          - id: claude-opus-5-5
+            name: Claude Opus 5.5
+      opl-gateway-kiro:
+        displayName: OPL Gateway · Kiro
+        api: anthropic-messages
+        baseURL: https://gateway.medopl.com/v1
+        apiKeyEnv: OPL_GATEWAY_KIRO_API_KEY
+        models:
+          - id: claude-opus-5-5
+            name: Claude Opus 5.5
+      opl-gateway-grok:
+        displayName: OPL Gateway · Grok
+        api: openai-responses
+        baseURL: https://gateway.medopl.com/v1
+        apiKeyEnv: OPL_GATEWAY_GROK_API_KEY
+        models:
+          - id: grok-4.7
+            name: Grok 4.7
+            contextWindow: 500000
 - id: ui-settings-general
   config:
     welcomeNoticeVersion: '2026-08-13.1'

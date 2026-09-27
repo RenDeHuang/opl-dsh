@@ -2,7 +2,7 @@
 
 OPL DSH 使用官方 DeepSeek Harness 桌面，在应用内提供统一的账户选择：OPL Gateway、DeepSeek 官方、稍后登录。首次设置完成后，后续启动直接进入工作区。
 
-选择 OPL Gateway 后，在当前弹窗输入邮箱和密码。插件沿用已有账户服务申请或复用 DeepSeek 与 Codex 分组的密钥，并保存默认模型 `deepseek-flash`（DeepSeek-V4.1-Flash）。默认通道可用即可进入；备用通道暂不可用时不阻塞使用。
+选择 OPL Gateway 后，在当前弹窗输入邮箱和密码。插件沿用已有账户服务按账号权限申请或复用各分组密钥。优先选择 DeepSeek 分组的 `deepseek-flash`；仅有其他分组时，选择该账号已经配置且可用的模型。缺少某个分组不会阻止其他分组使用，请求不会在失败后改发到其他分组。
 
 选择 DeepSeek 官方后，可以发起官方账户授权，或在当前弹窗填写官方 API Key。官方账号仍使用官方授权页面；授权完成后自动回到应用内的工作区。OPL 不接收 DeepSeek 账号密码。
 

@@ -12,7 +12,6 @@
  */
 
 import { z } from 'zod'
-import { brandString } from '@deepseek-ai/dsh-brand'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import type {
@@ -20,7 +19,7 @@ import type {
 } from './types.ts'
 
 /** Session id at the durable boundary; branding has no runtime representation. */
-const sessionId = z.string().transform(value => brandString<SessionId>(value))
+const sessionId = z.string().transform(value => value as SessionId)
 
 /** Every task state, for validating a stored record. */
 const taskState = z.enum([

@@ -25,8 +25,11 @@ async function harnessRpc(method,input,timeout=600000){
  const response=await fetch(binding.endpoint,{method:'POST',headers:{authorization:'Bearer '+binding.token,'content-type':'application/json'},body:JSON.stringify({namespace:'harness',method,args:input,timeoutMs:timeout}),signal:AbortSignal.timeout(timeout+5000)})
  const result=await response.json();if(!result.ok)throw new Error(result.error);return result.value
 }
-if(['delegate','delegate-start','delegate-prompt','delegate-cancel','delegate-snapshot','delegate-list','delegate-wait'].includes(command)){
- if(command==='delegate-list')console.log(JSON.stringify(await harnessRpc('list',{})))
+if(['delegate-review','delegate-tasks','delegate','delegate-start','delegate-prompt','delegate-cancel','delegate-snapshot','delegate-list','delegate-wait'].includes(command)){
+ const origin={kind:'codex',sessionId:process.env.CODEX_THREAD_ID??'manual'}
+ if(command==='delegate-review'){if(!args.session||!args.operation||!args.decision||!args['note-file'])throw Error('需要 --session --operation --decision --note-file');console.log(JSON.stringify(await harnessRpc('review',{origin,sessionId:args.session,operationId:args.operation,decision:args.decision,note:await readFile(args['note-file'],'utf8')})))}
+ else if(command==='delegate-tasks')console.log(JSON.stringify(await harnessRpc('tasks',{origin})))
+ else if(command==='delegate-list')console.log(JSON.stringify(await harnessRpc('list',{})))
  else if(['delegate-cancel','delegate-snapshot','delegate-wait'].includes(command)){
   if(!args.session)throw Error('缺少 --session')
   console.log(JSON.stringify(await harnessRpc(command.slice(9),{sessionId:args.session,...(args.operation?{operationId:args.operation}:{})})))
@@ -39,7 +42,7 @@ if(['delegate','delegate-start','delegate-prompt','delegate-cancel','delegate-sn
    if(!isAbsolute(args['prompt-file']))throw Error('--prompt-file 必须为绝对路径')
    text=await readFile(args['prompt-file'],'utf8');if(!text.trim())throw Error('任务不能为空')
   }
-  const origin={kind:'codex',sessionId:process.env.CODEX_THREAD_ID??'manual'}
+  if(command==='delegate'){console.log(JSON.stringify(await harnessRpc('delegate',{origin,combination:args.combination,cwd:args.cwd,taskId:args.task,operationId:args.operation,task:text,...(args.session?{sessionId:args.session}:{})})));process.exit(0)}
   const started=command==='delegate-prompt'?{id:args.session}:await harnessRpc('start',{combination:args.combination,cwd:args.cwd,taskId:args.task,origin,...(args.session?{existingSessionId:args.session}:{})})
   if(command==='delegate-start')console.log(JSON.stringify(started))
   else{

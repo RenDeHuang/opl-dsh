@@ -1,0 +1,60 @@
+{
+  "date": "2026-09-27",
+  "officialDesktop": "0.1.7-rc.2",
+  "realFlow": {
+    "parentModel": "gpt-6-sol",
+    "parentHarness": "Codex CLI",
+    "parentSession": "harness-68624191832b8bbb3d9508a7",
+    "parentState": "completed",
+    "childModel": {
+      "provider": "opl-gateway",
+      "model": "deepseek-flash"
+    },
+    "childHarness": "dsh",
+    "childSession": "harness-ab443acc16cb92fdebaed457",
+    "childState": "completed",
+    "report": {
+      "summary": "读取项目根目录 input.txt，使用 cp 将其内容原样复制到项目根目录 output.txt，未修改其他文件。",
+      "artifacts": [
+        "output.txt"
+      ],
+      "checks": [
+        "实际读取了 input.txt：内容为单行 'OPL_DELEGATION_84721'（21 字节，含结尾换行）",
+        "复制结果：output.txt 与 input.txt 字节数均为 21，内容一致，output.txt 内容为 'OPL_DELEGATION_84721'（含结尾换行）",
+        "未修改其他文件"
+      ],
+      "remaining": []
+    },
+    "review": {
+      "decision": "accepted",
+      "note": "本机独立核对通过：读取 input.txt 和 output.txt 均为 21 字节；两者 SHA-256 均为 f4084d7f376c5aab0c8301817dfcd497f7a66102d2a5c67d552d943bcb14795e；cmp 返回 0，且逐字节十六进制内容一致（包含末尾换行 0a）。子任务报告的 output.txt 产物与实际文件一致。",
+      "reviewedAt": "2026-09-27T02:44:05.590Z"
+    },
+    "delivery": {
+      "id": "124b2c94aca31a30f3e67499112239fc4f73615a9c648f86ff895707cba35b2f",
+      "state": "delivered",
+      "attempt": 0
+    },
+    "inputEqualsOutput": true,
+    "fileBytes": 21,
+    "fileSha256": "f4084d7f376c5aab0c8301817dfcd497f7a66102d2a5c67d552d943bcb14795e"
+  },
+  "checks": {
+    "typecheck": "passed",
+    "build": "passed",
+    "vitest": 161,
+    "nodeTests": 11,
+    "externalDisablePreservesInternal": true,
+    "restartPreservesAccepted": true
+  },
+  "liveExecutionPackage": "614e83845df0",
+  "finalPackageSha256": "afdc86968764d9628a404d7ef7cce8d9675af95fa224d9e13ea8149c2a39b901",
+  "scope": "真实模型闭环在隔离官方 macOS 桌面验收；重启后用最终包回读。其他故障路径由行为测试覆盖。本轮未做 Windows 或其他所有 Harness 配对的真实验收。",
+  "localInstallation": {
+    "profile": "/Users/gaofeng/.dsh",
+    "package": "opl-dsh-enhancements-0.2.4-afdc86968764.tgz",
+    "sha256Matches": true,
+    "availableCombinations": 8,
+    "runningTasksAtReadback": 0
+  }
+}

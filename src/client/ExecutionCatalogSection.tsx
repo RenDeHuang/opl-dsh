@@ -1,42 +1,44 @@
 import { useEffect, useState } from 'react'
 import { Button, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { ExecutionCatalog } from '../coordination/catalog-types.ts'
+import { displayModelSource, selectableModels, modelRefKey, type ExecutionCatalog, type CombinationDefinition } from '../coordination/catalog-types.ts'
+import type { HarnessCatalog } from '../coordination/harness-types.ts'
 import css from './SettingsSection.module.css'
-
-type Call = <T>(method: string, input?: unknown) => Promise<T>
-const clone = <T,>(value: T): T => structuredClone(value)
-
-/** User-facing configuration for connections, models, Harnesses and combinations. */
-export function ExecutionCatalogSection({ call }: { call: Call }) {
-  const [catalog, setCatalog] = useState<ExecutionCatalog>(), [busy, setBusy] = useState(false), [notice, setNotice] = useState('')
-  const [newModel, setNewModel] = useState({ name: '', modelId: '', endpoint: '' })
-  const [newCombination, setNewCombination] = useState({ name: '', modelId: '', harnessId: '', connectionId: '' })
-  const load = async () => setCatalog(await call<ExecutionCatalog>('catalog'))
-  useEffect(() => { void load().catch(error => setNotice(error instanceof Error ? error.message : '无法读取执行目录')) }, [])
-  const save = async (next: ExecutionCatalog) => { setBusy(true); setNotice(''); try { const saved = await call<ExecutionCatalog>('save-catalog', { catalog: next }); setCatalog(saved); setNotice('已保存。新对话会使用更新后的组合目录。') } catch (error) { setNotice(error instanceof Error ? error.message : '保存失败') } finally { setBusy(false) } }
-  const updateCombination = (id: string, patch: Partial<ExecutionCatalog['combinations'][number]>) => { if (!catalog) return; const next = clone(catalog); next.combinations = next.combinations.map(item => item.id === id ? { ...item, ...patch } : item); if (patch.isDefault === true) next.combinations = next.combinations.map(item => item.id === id ? item : { ...item, isDefault: false }); void save(next) }
-  const addModel = () => {
-    if (!catalog || !newModel.name.trim() || !newModel.modelId.trim() || !newModel.endpoint.trim()) return
-    const suffix = crypto.randomUUID().slice(0, 8), connectionId = `custom-${suffix}`, modelId = `custom-${suffix}`
-    const next = clone(catalog)
-    next.connections.push({ id: connectionId, name: `${newModel.name.trim()} 连接`, kind: 'openai-compatible', endpoint: newModel.endpoint.trim(), authRef: `OPL_DSH_CUSTOM_${suffix.toUpperCase()}_API_KEY` })
-    next.models.push({ id: modelId, name: newModel.name.trim(), modelId: newModel.modelId.trim(), connectionId, protocol: 'openai-completions' })
-    setNewModel({ name: '', modelId: '', endpoint: '' }); void save(next)
+type Call = <T>(method:string,input?:unknown)=>Promise<T>
+export function ExecutionCatalogSection({call}:{call:Call}) {
+  const [catalog,setCatalog]=useState<ExecutionCatalog>(),[busy,setBusy]=useState(false),[notice,setNotice]=useState('')
+  const [availability,setAvailability]=useState<HarnessCatalog>()
+  const [draft,setDraft]=useState({name:'',model:'',harness:'dsh'})
+  const [editing,setEditing]=useState<string>()
+  useEffect(()=>{void Promise.all([call<ExecutionCatalog>('catalog'),call<HarnessCatalog>('list')]).then(([catalog,status])=>{setCatalog(catalog);setAvailability(status)}).catch(()=>setNotice('无法读取组合目录'))},[call])
+  const save=async(next:ExecutionCatalog)=>{setBusy(true);setNotice('');try{setCatalog(await call('save-catalog',{catalog:next}));setAvailability(await call('list'));setNotice('已保存，新的选择使用此配置。')}catch(e){setNotice(e instanceof Error?e.message:'保存失败')}finally{setBusy(false)}}
+  const update=(id:string,patch:Partial<CombinationDefinition>)=>{
+    if(!catalog)return
+    const target=catalog.combinations.find(x=>x.id===id)!
+    void save({...catalog,combinations:catalog.combinations.map(x=>x.id===id?{...x,...patch,generated:false}:patch.isDefault&&modelRefKey(x.modelRef)===modelRefKey(target.modelRef)?{...x,isDefault:false}:x)})
   }
-  const addCombination = () => {
-    if (!catalog || !newCombination.name.trim() || !newCombination.modelId || !newCombination.harnessId || !newCombination.connectionId) return
-    const next = clone(catalog), id = `custom-combination-${crypto.randomUUID().slice(0, 8)}`
-    next.combinations.push({ id, name: newCombination.name.trim(), modelId: newCombination.modelId, harnessId: newCombination.harnessId, connectionId: newCombination.connectionId, sandbox: 'workspace', isDefault: false, enabled: true })
-    setNewCombination({ name: '', modelId: '', harnessId: '', connectionId: '' }); void save(next)
-  }
-  if (!catalog) return <div className={css.section}><h2 className={css.title}>模型与组合</h2><p className={css.muted}>正在读取执行目录…</p></div>
-  return <div className={css.section}>
-    <h2 className={css.title}>模型与组合</h2>
-    <p className={css.intro}>连接提供账号和协议，模型提供模型 ID，Harness 提供运行时；组合把它们和权限绑定成一个实际调用单位。</p>
-    <div className={css.card}><h3 className={css.name}>默认模型组合</h3><p className={css.muted}>只选择模型时，使用该模型的默认 Harness；没有自定义覆盖时，使用这里标记的默认组合。</p>{catalog.combinations.map(item => <div className={css.row} key={item.id}><span>{item.name}</span><Switch label={`设为默认组合：${item.name}`} checked={item.isDefault} disabled={busy || !item.enabled} onChange={value => updateCombination(item.id, { isDefault: value })} /></div>)}</div>
-    <div className={css.card}><h3 className={css.name}>自定义模型组合</h3><p className={css.muted}>组合是对话调用的最小单位：模型、Harness 和权限一起生效。用户自定义后，会覆盖该模型的默认 Harness。</p>{catalog.combinations.map(item => { const model = catalog.models.find(x => x.id === item.modelId), harness = catalog.harnesses.find(x => x.id === item.harnessId), connection = catalog.connections.find(x => x.id === item.connectionId); return <div className={css.detailsBody} key={item.id}><div className={css.header}><div className={css.identity}><strong>{item.name}</strong><span className={css.muted}>{model?.name} · {harness?.name} · {connection?.name}</span></div><Switch label={`启用组合：${item.name}`} checked={item.enabled} disabled={busy} onChange={value => updateCombination(item.id, { enabled: value })} /></div><div className={css.form}><label className={css.field}><span>组合名称</span><input className={css.input} disabled={busy} value={item.name} onChange={event => { const next=clone(catalog); next.combinations=next.combinations.map(x=>x.id===item.id?{...x,name:event.target.value}:x); setCatalog(next) }} onBlur={() => { void save(catalog) }} /></label><label className={css.field}><span>权限边界</span><select className={css.input} disabled={busy} value={item.sandbox} onChange={event => updateCombination(item.id, { sandbox: event.target.value as 'read-only' | 'workspace' })}><option value='workspace'>工作区内修改</option><option value='read-only'>只读</option></select></label></div></div> })}<details className={css.details}><summary>新建自定义组合</summary><div className={css.detailsBody}><label className={css.field}><span>组合名称</span><input className={css.input} value={newCombination.name} onChange={event => setNewCombination({ ...newCombination, name: event.target.value })} placeholder='例如：Grok + Grok Build' /></label><label className={css.field}><span>模型</span><select className={css.input} value={newCombination.modelId} onChange={event => setNewCombination({ ...newCombination, modelId: event.target.value })}><option value=''>选择模型</option>{catalog.models.map(item => <option value={item.id} key={item.id}>{item.name} · {item.modelId}</option>)}</select></label><label className={css.field}><span>Harness</span><select className={css.input} value={newCombination.harnessId} onChange={event => setNewCombination({ ...newCombination, harnessId: event.target.value })}><option value=''>选择 Harness</option>{catalog.harnesses.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label className={css.field}><span>连接</span><select className={css.input} value={newCombination.connectionId} onChange={event => setNewCombination({ ...newCombination, connectionId: event.target.value })}><option value=''>选择连接</option>{catalog.connections.map(item => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><Button variant='outline' disabled={busy || !newCombination.name.trim() || !newCombination.modelId || !newCombination.harnessId || !newCombination.connectionId} onClick={addCombination}>保存自定义组合</Button><p className={css.muted}>缺少对应 Harness 时会显示未就绪，不会静默切换到另一个 Harness。</p></div></details></div>
-    <div className={css.card}><h3 className={css.name}>连接与模型</h3><p className={css.muted}>凭据只保存为引用；密钥仍由连接自己的账号页面管理。这里管理模型显示名、模型 ID 和连接来源。</p>{catalog.connections.map(connection => <div className={css.detailsBody} key={connection.id}><strong>{connection.name}</strong><span className={css.muted}>{connection.kind} · {connection.endpoint ?? '使用连接自己的官方地址'}</span></div>)}<details className={css.details}><summary>添加 OpenAI 兼容模型</summary><div className={css.detailsBody}><label className={css.field}><span>显示名称</span><input className={css.input} value={newModel.name} onChange={event => setNewModel({ ...newModel, name: event.target.value })} placeholder='例如：Grok 4.7' /></label><label className={css.field}><span>模型 ID</span><input className={css.input} value={newModel.modelId} onChange={event => setNewModel({ ...newModel, modelId: event.target.value })} placeholder='例如：grok-4.7' /></label><label className={css.field}><span>兼容接口地址</span><input className={css.input} value={newModel.endpoint} onChange={event => setNewModel({ ...newModel, endpoint: event.target.value })} placeholder='https://example.com/v1' /></label><Button variant='outline' disabled={busy || !newModel.name.trim() || !newModel.modelId.trim() || !newModel.endpoint.trim()} onClick={addModel}>添加模型连接</Button><p className={css.muted}>新增模型会进入目录；能否运行取决于是否安装匹配的 Harness 适配器。</p></div></details></div>
-    <div className={css.card}><h3 className={css.name}>Harness</h3>{catalog.harnesses.map(item => <div className={css.row} key={item.id}><span>{item.name}<small className={css.muted}> · {item.kind} · {item.adapter ?? '等待适配器'}</small></span><span className={css.muted}>{item.kind === 'dsh' || item.kind === 'grok-build' ? '已接入' : '需要安装适配器'}</span></div>)}</div>
-    {notice && <p className={css.notice} role='status'>{notice}</p>}
+  return <div className={css.section}><h2 className={css.title}>运行配置</h2><p className={css.intro}>保存模型、渠道、Harness 与权限的搭配，在对话中直接选用。模型在“模型”页管理，账号与凭据在“OPL Gateway”中管理。</p>
+    {!catalog&&!notice&&<p className={css.muted} role='status'>正在加载组合…</p>}
+    {notice&&<p role='status' className={css.notice}>{notice}</p>}
+    {catalog&&<details className={css.details}><summary>添加运行配置</summary><div className={css.detailsBody}>
+      <label className={css.field}>名称<input className={css.input} value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})}/></label>
+      <label className={css.field}>模型<select className={css.input} value={draft.model} onChange={e=>setDraft({...draft,model:e.target.value})}><option value=''>选择模型</option>{selectableModels(catalog.models).map(model=><option key={modelRefKey(model.ref)} value={modelRefKey(model.ref)}>{displayModelSource(model.ref,model.source)} · {model.name}{model.available?'':' · 未就绪'}</option>)}</select></label>
+      <label className={css.field}>Harness<select className={css.input} value={draft.harness} onChange={e=>setDraft({...draft,harness:e.target.value})}>{catalog.harnesses.map(h=><option key={h.id} value={h.id}>{h.name}</option>)}</select></label>
+      <Button disabled={busy||!draft.name.trim()||!draft.model} onClick={()=>{const model=catalog.models.find(m=>modelRefKey(m.ref)===draft.model);if(!model)return;void save({...catalog,combinations:[...catalog.combinations,{id:crypto.randomUUID(),name:draft.name.trim(),modelRef:model.ref,harnessRef:draft.harness,permissionPolicy:'read-only',isDefault:false,enabled:true}]});setDraft({name:'',model:'',harness:'dsh'})}}>保存运行配置</Button>
+    </div></details>}
+    {catalog?.combinations.map(item=>{
+      const model=catalog.models.find(x=>modelRefKey(x.ref)===modelRefKey(item.modelRef)),harness=catalog.harnesses.find(x=>x.id===item.harnessRef)
+      const status=availability?.combinations.find(c=>c.id===item.id)
+      return <details className={css.card} key={item.id} open={editing===item.id} onToggle={event=>{const open=event.currentTarget.open;setEditing(current=>open?item.id:current===item.id?undefined:current)}}><summary className={css.header}>
+        <span className={css.identity}><strong>{item.name}</strong>{item.isDefault&&item.enabled&&<span className={css.muted}>此模型的默认运行配置</span>}<span className={css.muted}>{displayModelSource(item.modelRef,model?.source)} · {model?.name??item.modelRef.model} · {harness?.name??item.harnessRef}</span></span>
+        <span className={css.row}><span className={css.muted}>{!item.enabled?'已停用':status?.available?'可执行':status?.reason??model?.reason??'尚未验证'}</span><Switch label={`启用 ${item.name}`} disabled={busy} checked={item.enabled} onChange={enabled=>update(item.id,{enabled})}/></span>
+      </summary>
+        <div className={css.detailsBody}>
+          <label className={css.field}>配置名称<input className={css.input} defaultValue={item.name} disabled={busy} onBlur={e=>{if(e.target.value!==item.name)update(item.id,{name:e.target.value})}}/></label>
+          <div className={css.row}><Switch label='作为此模型的默认运行配置' disabled={busy||!item.enabled} checked={item.isDefault} onChange={isDefault=>update(item.id,{isDefault})}/><span className={css.muted}>默认运行配置</span></div>
+          <label className={css.field}>权限<select className={css.input} value={item.permissionPolicy} disabled={busy} onChange={e=>update(item.id,{permissionPolicy:e.target.value as 'workspace'|'read-only'})}><option value='read-only'>只读</option><option value='workspace'>工作区内修改（仍需 Harness 授权）</option></select></label>
+        </div>
+      </details>
+    })}
+
   </div>
 }
