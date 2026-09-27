@@ -22,6 +22,7 @@ export interface HarnessTurn {
   operationId: string
   fingerprint: string
   prompt: string
+  reasoningEffort?: string
   text: string
   state: HarnessState
   stopReason?: string

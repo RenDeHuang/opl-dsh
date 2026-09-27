@@ -6,7 +6,12 @@ import { createInterface } from 'node:readline'
 import { randomUUID } from 'node:crypto'
 import { realpath } from 'node:fs/promises'
 import { dirname, resolve, sep } from 'node:path'
-import { query, type Query, type McpServerConfig } from '@anthropic-ai/claude-agent-sdk'
+import {
+  getSessionMessages,
+  query,
+  type Query,
+  type McpServerConfig,
+} from '@anthropic-ai/claude-agent-sdk'
 const kind = process.env.OPL_NATIVE_HARNESS!,
   command = process.env.OPL_NATIVE_COMMAND!
 const model = process.env.OPL_NATIVE_MODEL!,
@@ -145,7 +150,7 @@ async function openCodex() {
     })().catch(() => rejectTurn?.(Error('Codex 消息处理失败')))
   })
   await codexRequest('initialize', {
-    clientInfo: { name: 'opl-dsh', version: '0.2.8' },
+    clientInfo: { name: 'opl-dsh', version: '0.2.9' },
     capabilities: { experimentalApi: true },
   })
   child.stdin!.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n')
@@ -165,8 +170,11 @@ async function pathInProject(path: unknown): Promise<boolean> {
     }
   }
 }
-async function claudePrompt(text: string) {
+async function claudePrompt(text: string, effort?: string) {
+  if (effort && !['low', 'medium', 'high', 'xhigh', 'max'].includes(effort))
+    throw Error('Claude Code 不支持该推理强度')
   cancelled = false
+  hasHistory = (await getSessionMessages(sessionId, { dir: cwd, limit: 1 })).length > 0
   const disallowed = readonly
     ? ['Bash', 'Write', 'Edit', 'NotebookEdit', 'Agent', 'Task']
     : ['Agent', 'Task']
@@ -175,6 +183,7 @@ async function claudePrompt(text: string) {
     options: {
       cwd,
       model,
+      ...(effort ? { effort: effort as 'low' | 'medium' | 'high' | 'xhigh' | 'max' } : {}),
       pathToClaudeCodeExecutable: command,
       env,
       settingSources: [],
@@ -221,7 +230,6 @@ async function claudePrompt(text: string) {
   let result: any
   try {
     for await (const event of claude) {
-      hasHistory = true
       if (event.type === 'stream_event') {
         const e = event.event
         if (e.type === 'content_block_delta' && e.delta.type === 'text_delta')
@@ -256,8 +264,14 @@ async function claudePrompt(text: string) {
     claude = undefined
   }
   if (cancelled) return { stopReason: 'cancelled' }
-  if (!result || result.is_error || result.subtype !== 'success')
-    throw Error('Claude Code 执行失败')
+  if (!result || result.is_error || result.subtype !== 'success') {
+    const status = result?.api_error_status
+    if (status === 401 || status === 403) throw Error('HARNESS_AUTH')
+    if (status === 429) throw Error('HARNESS_RATE_LIMIT')
+    if (status === 400 || status === 404) throw Error('HARNESS_MODEL')
+    throw Error('HARNESS_EXECUTION')
+  }
+  hasHistory = true
   return { stopReason: 'end_turn' }
 }
 async function invoke(method: string, p: any) {
@@ -318,7 +332,7 @@ async function invoke(method: string, p: any) {
       if (r.model && r.model !== model) throw Error('Codex 返回不同模型')
     } else {
       sessionId = p.sessionId ?? randomUUID()
-      hasHistory = !!p.sessionId
+      hasHistory = false
     }
     return { sessionId, models: { currentModelId: model } }
   }
@@ -337,7 +351,8 @@ async function invoke(method: string, p: any) {
       .filter((v: any) => v.type === 'text')
       .map((v: any) => v.text)
       .join('\n')
-    if (kind === 'claude') return claudePrompt(text)
+    const effort = p._meta?.reasoningEffort ?? undefined
+    if (kind === 'claude') return claudePrompt(text, effort)
     const done = new Promise((resolve, reject) => {
       resolveTurn = resolve
       rejectTurn = reject
@@ -349,6 +364,7 @@ async function invoke(method: string, p: any) {
         threadId: sessionId,
         input: [{ type: 'text', text, text_elements: [] }],
         model,
+        effort: effort ?? null,
       })
       turnId = r.turn.id
       return await done
@@ -393,7 +409,14 @@ createInterface({ input: process.stdin }).on('line', (line) => {
       if (m.id !== undefined)
         send({
           id: m.id,
-          error: { code: -32000, message: '官方 Harness 调用未完成，请检查凭据、模型或安装状态' },
+          error: {
+            code:
+              error instanceof Error &&
+              /^HARNESS_(AUTH|RATE_LIMIT|MODEL|EXECUTION)$/.test(error.message)
+                ? error.message
+                : 'HARNESS_UNKNOWN',
+            message: '官方 Harness 调用未完成',
+          },
         })
     }
   })()

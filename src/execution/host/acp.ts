@@ -5,6 +5,19 @@ export const object = (value: unknown): Record<string, any> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, any>)
     : {}
+const harnessFailure = (code: unknown) => {
+  switch (code) {
+    case 'HARNESS_AUTH':
+      return '所选渠道认证失败，请在 OPL Gateway 刷新账号后重试。原任务未自动重发。'
+    case 'HARNESS_RATE_LIMIT':
+      return '所选渠道当前限流，请稍后重试。原任务未自动重发。'
+    case 'HARNESS_MODEL':
+      return '所选模型未被当前渠道接受，请检查模型配置。原任务未自动重发。'
+    default:
+      return 'Harness 执行未完成，请检查安装、渠道和模型。原任务未自动重发。'
+  }
+}
+export class HarnessTransportError extends Error {}
 export class AcpProcess {
   private readonly child: ChildProcessWithoutNullStreams
   private readonly pending = new Map<
@@ -50,10 +63,7 @@ export class AcpProcess {
         if (!p) return
         clearTimeout(p.timer)
         this.pending.delete(m.id)
-        if (m.error)
-          p.reject(
-            new Error(`Harness ACP 请求失败（${String(object(m.error).code ?? 'unknown')}）`),
-          )
+        if (m.error) p.reject(new HarnessTransportError(harnessFailure(object(m.error).code)))
         else p.resolve(m.result)
       } else if (m.method === 'session/update') this.update(m.params)
       else if ((typeof m.id === 'string' || typeof m.id === 'number') && m.method) {

@@ -44,7 +44,7 @@ function setup() {
       {
         group: 'codex',
         provider: 'opl-gateway-openai',
-        adapter: new Adapter(codex, ['deepseek-flash', 'gpt-5']),
+        adapter: new Adapter(codex, ['deepseek-flash', 'gpt-6-sol']),
         available: async () => true,
       },
     ],
@@ -58,7 +58,7 @@ describe('explicit group routing', () => {
     expect((await adapter.listModels('opl-gateway')).map((m) => m.id)).toEqual([
       'deepseek-flash',
       'codex::deepseek-flash',
-      'codex::gpt-5',
+      'codex::gpt-6-sol',
     ])
     await collect(adapter, { ...request, model: 'codex::deepseek-flash' })
     expect(deepseek).not.toHaveBeenCalled()
@@ -69,8 +69,27 @@ describe('explicit group routing', () => {
   })
   it('uses Codex as the GPT primary route', async () => {
     const { adapter, codex } = setup()
-    await collect(adapter, { ...request, model: 'codex::gpt-5' })
+    await collect(adapter, { ...request, model: 'codex::gpt-6-sol' })
     expect(codex).toHaveBeenCalledOnce()
+  })
+  it('exposes native Harness reasoning choices through the DSH model catalog', async () => {
+    const { adapter } = setup()
+    const model = await adapter.resolveModel('opl-gateway', 'codex::gpt-6-sol')
+    expect(model.reasoning?.efforts.map((item) => item.id)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ])
+    const listed = (await adapter.listModels('opl-gateway')).find(
+      (item) => item.id === 'codex::gpt-6-sol',
+    )
+    expect(listed?.reasoning?.efforts.map((item) => item.id)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+    ])
   })
   it('does not send an unknown model to an arbitrary group', async () => {
     const { adapter, codex } = setup()

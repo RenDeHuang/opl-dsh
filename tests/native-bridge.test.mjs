@@ -55,6 +55,7 @@ test(
         await call('session/prompt', {
           sessionId: session.sessionId,
           prompt: [{ type: 'text', text: 'test' }],
+          _meta: { reasoningEffort: 'high' },
         }),
         { stopReason: 'end_turn' },
       )

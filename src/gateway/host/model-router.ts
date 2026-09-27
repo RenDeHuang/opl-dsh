@@ -1,5 +1,5 @@
 /** A logical source over explicit, independently credentialed model routes. */
-import { LlmAdapter, LlmError } from '@deepseek-ai/dsh-llm'
+import { LlmAdapter, LlmError, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type { GenerateOptions, LlmResolvedModelInfo, StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { GatewayGroupId } from '../contracts/groups.ts'
 export const OPENAI_PROVIDER = 'opl-gateway-openai'
@@ -12,6 +12,20 @@ export interface GatewayModelRoute {
 /** Unqualified DeepSeek ids remain stable; other groups have collision-free identities. */
 export const gatewayModelId = (group: GatewayGroupId, id: string) =>
   group === 'deepseek' ? id : `${group}::${id}`
+
+function withReasoning(model: LlmResolvedModelInfo): LlmResolvedModelInfo {
+  if (model.reasoning) return model
+  const efforts = ['gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna'].includes(model.id)
+    ? ['low', 'medium', 'high', 'xhigh']
+    : model.id === 'claude-opus-5-5'
+      ? ['low', 'medium', 'high', 'xhigh', 'max']
+      : undefined
+  if (!efforts) return model
+  return {
+    ...model,
+    reasoning: { efforts: efforts.map((id) => ({ id: ReasoningEffortId(id), name: id })) },
+  }
+}
 export class GatewayModelAdapter extends LlmAdapter {
   constructor(
     private readonly routes: readonly GatewayModelRoute[],
@@ -39,7 +53,7 @@ export class GatewayModelAdapter extends LlmAdapter {
       this.routes.map(async (route) => {
         if (!(await route.available())) return []
         return (await route.adapter.listModels(route.provider)).map((model) => ({
-          ...model,
+          ...withReasoning(model),
           provider,
           id: gatewayModelId(route.group, model.id),
         }))
@@ -67,7 +81,7 @@ export class GatewayModelAdapter extends LlmAdapter {
   ): Promise<LlmResolvedModelInfo> {
     const { route, wireModel } = await this.selection(model)
     return {
-      ...(await route.adapter.resolveModel(route.provider, wireModel, signal)),
+      ...withReasoning(await route.adapter.resolveModel(route.provider, wireModel, signal)),
       provider,
       id: model,
     }
@@ -76,7 +90,7 @@ export class GatewayModelAdapter extends LlmAdapter {
     const { route, wireModel } = await this.selection(model)
     const call = await route.adapter.prepareCall(route.provider, wireModel, signal)
     return {
-      model: { ...call.model, provider, id: model },
+      model: { ...withReasoning(call.model), provider, id: model },
       stream: (options: GenerateOptions) => this.dispatch(route, wireModel, call.stream, options),
     }
   }

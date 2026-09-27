@@ -17,6 +17,7 @@ createInterface({ input: process.stdin }).on('line', (line) => {
     send({ id: m.id, result: { thread: { id: threadId }, model: m.params.model } })
   }
   if (m.method === 'turn/start') {
+    if (m.params.effort !== 'high') throw Error('reasoning effort was not forwarded')
     send({ id: m.id, result: { turn: { id: turn } } })
     send({
       id: 100,

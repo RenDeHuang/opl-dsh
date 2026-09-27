@@ -52,6 +52,7 @@ export function CombinationSelect({
   const [availability, setAvailability] = useState<HarnessCatalog['combinations']>([])
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [pendingChoice, setPendingChoice] = useState<Choice>()
   const [open, setOpen] = useState(false)
   const [pane, setPane] = useState<'root' | 'model' | 'effort'>('root')
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null)
@@ -195,6 +196,7 @@ export function CombinationSelect({
       return
     }
     setBusy(true)
+    setPendingChoice(choice)
     setError('')
     try {
       await call('select-combination', {
@@ -207,6 +209,7 @@ export function CombinationSelect({
       setError(cause instanceof Error ? cause.message : '选择失败')
     } finally {
       setBusy(false)
+      setPendingChoice(undefined)
     }
   }
   const selectEffort = async (effort: string | undefined) => {
@@ -365,7 +368,9 @@ export function CombinationSelect({
         disabled={locked}
         onClick={show}
       >
-        <span className={css.triggerLabel}>{modelLabel}</span>
+        <span className={css.triggerLabel}>
+          {pendingChoice ? choiceLabel(pendingChoice) : modelLabel}
+        </span>
         {effortLabel && <span className={css.triggerEffort}>{effortLabel}</span>}
         {busy ? (
           <StateDot state="ongoing" />
@@ -385,6 +390,11 @@ export function CombinationSelect({
             role="menu"
             aria-label="模型与推理强度"
           >
+            {busy && (
+              <div className={css.groupTitle} role="status">
+                {pendingChoice ? `正在切换到 ${choiceLabel(pendingChoice)}…` : '正在保存推理强度…'}
+              </div>
+            )}
             {pane === 'root' && (
               <>
                 <button
@@ -398,7 +408,7 @@ export function CombinationSelect({
                   <span className={css.cellValue}>{modelLabel}</span>
                   <IconChevronRightOutlineRegular className={css.cellChevron} />
                 </button>
-                {reasoning !== undefined && selected?.combination.harnessRef === 'dsh' && (
+                {reasoning !== undefined && (
                   <button
                     ref={itemRef()}
                     type="button"
@@ -449,7 +459,7 @@ export function CombinationSelect({
                               <span className={css.modelName}>{choiceLabel(choice)}</span>
                             </span>
                             <span className={css.check}>
-                              {busy && selection.combination === choice.combination.id ? (
+                              {busy && pendingChoice?.combination.id === choice.combination.id ? (
                                 <StateDot state="ongoing" />
                               ) : selectedChoice ? (
                                 <IconCheckOutlineRegular />

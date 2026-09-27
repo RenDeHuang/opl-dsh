@@ -19,7 +19,7 @@ import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-workspace'
 import type {} from '@deepseek-ai/dsh-user-questions'
-import { AcpProcess, object } from './acp.ts'
+import { AcpProcess, HarnessTransportError, object } from './acp.ts'
 import { waitForSession } from './session-wait.ts'
 import {
   DSH_COMBINATION,
@@ -450,7 +450,7 @@ export class HarnessService {
     if (!record) throw Error('执行组合会话不存在')
     return this.view(record)
   }
-  async start(input: HarnessStartRequest): Promise<HarnessSnapshot> {
+  async start(input: HarnessStartRequest, deferConnection = false): Promise<HarnessSnapshot> {
     await this.ready
     if (this.disposed) throw Error('组合服务已关闭')
     const catalog = await this.executionCatalog()
@@ -515,7 +515,7 @@ export class HarnessService {
     // then resume the same mapping rather than orphaning an invisible session.
     this.records.set(id, record)
     const pending = this.save(record)
-      .then(() => this.connect(record))
+      .then(() => (deferConnection ? undefined : this.connect(record)))
       .then(() => this.view(record))
       .finally(() => this.starting.delete(id))
     this.starting.set(id, pending)
@@ -661,7 +661,7 @@ export class HarnessService {
             fs: { readTextFile: false, writeTextFile: false },
             terminal: false,
           },
-          clientInfo: { name: 'opl-dsh', version: '0.2.8' },
+          clientInfo: { name: 'opl-dsh', version: '0.2.9' },
         }),
       )
       if (init.protocolVersion !== 1) throw Error('Harness 未协商 ACP v1')
@@ -782,14 +782,16 @@ export class HarnessService {
     await this.save(record)
     return this.view(record)
   }
-  async prompt(input: HarnessPromptRequest): Promise<HarnessSnapshot> {
+  async prompt(input: HarnessPromptRequest, reasoningEffort?: string): Promise<HarnessSnapshot> {
     await this.ready
     if (this.disposed) throw Error('组合服务已关闭')
     const record = this.records.get(required(input?.sessionId, 'sessionId'))
     if (!record) throw Error('组合会话不存在')
     const text = required(input.text, 'text'),
       operation = required(input.operationId, 'operationId')
-    const fingerprint = hash([record.id, text])
+    const fingerprint = hash(
+      reasoningEffort ? [record.id, text, reasoningEffort] : [record.id, text],
+    )
     const previous = record.turns.find((t) => t.operationId === operation)
     if (previous) {
       if (previous.fingerprint !== fingerprint) throw Error('同一个 operation ID 的内容发生变化')
@@ -823,6 +825,7 @@ export class HarnessService {
       text: '',
       state: 'queued',
       tools: [],
+      ...(reasoningEffort ? { reasoningEffort } : {}),
     }
     if (!record.turns.length) record.title = text.slice(0, 80)
     record.turns.push(turn)
@@ -859,7 +862,13 @@ export class HarnessService {
         const result = object(
           await active.acp!.request(
             'session/prompt',
-            { sessionId: record.acpSessionId, prompt: [{ type: 'text', text: turn.prompt }] },
+            {
+              sessionId: record.acpSessionId,
+              prompt: [{ type: 'text', text: turn.prompt }],
+              ...(['codex', 'claude'].includes(record.harnessRef)
+                ? { _meta: { reasoningEffort: turn.reasoningEffort ?? null } }
+                : {}),
+            },
             24 * 60 * 60 * 1000,
           ),
         )
@@ -942,9 +951,12 @@ export class HarnessService {
           offQuestions()
         }
       }
-    } catch {
+    } catch (error) {
       turn.state = active.cancelled ? 'cancelled' : 'failed'
-      turn.error = '执行未完成，请检查 Harness 安装、所选渠道和模型。原任务未自动重发。'
+      turn.error =
+        error instanceof HarnessTransportError
+          ? error.message
+          : '执行未完成，请检查 Harness 安装、所选渠道和模型。原任务未自动重发。'
     } finally {
       for (const p of active.approvals.values()) active.acp?.answer(p.rpcId)
       active.approvals.clear()
@@ -1512,8 +1524,15 @@ export class HarnessService {
         (item) => item.id === input.combination && item.enabled,
       )
     if (!definition) throw Error('组合不存在或已停用')
-    const availability = (await this.combinations()).find((item) => item.id === definition.id)
-    if (!availability?.available) throw Error(availability?.reason ?? '组合未就绪')
+    const model = catalog.models.find(
+      (item) => modelRefKey(item.ref) === modelRefKey(definition.modelRef),
+    )
+    if (!model?.available) throw Error('模型未配置或凭据未就绪')
+    const harness = catalog.harnesses.find((item) => item.id === definition.harnessRef)
+    const adapter = adapterFor(definition.harnessRef, definition.modelRef)
+    if (!harness || !adapter) throw Error('组合没有兼容适配器')
+    const available = await adapter.available(this.ctx, this.adapterOptions(harness.command))
+    if (!available.available) throw Error(available.reason ?? 'Harness 未就绪')
     if (definition.harnessRef === 'dsh') {
       await this.native('selectModel', { sessionId: session.id, ...definition.modelRef })
       // A combination may narrow permissions; it must never silently elevate an existing session.
@@ -1527,13 +1546,16 @@ export class HarnessService {
       definition.permissionPolicy === 'read-only' || !policy || policy.mode === 'read-only'
         ? 'read-only'
         : 'workspace'
-    const child = await this.start({
-      combination: definition.id,
-      cwd: session.header.cwd,
-      origin: { kind: 'dsh', sessionId: session.id },
-      taskId: 'conversation:' + definition.id,
-      sandbox,
-    })
+    const child = await this.start(
+      {
+        combination: definition.id,
+        cwd: session.header.cwd,
+        origin: { kind: 'dsh', sessionId: session.id },
+        taskId: 'conversation:' + definition.id,
+        sandbox,
+      },
+      true,
+    )
     await this.native('selectModel', { sessionId: session.id, ...definition.modelRef })
     await this.bindSelection(session.id, definition.id)
     return { kind: 'external', sessionId: child.id }
@@ -1600,7 +1622,7 @@ export class HarnessService {
     let offset = 0
     try {
       options.signal?.throwIfAborted()
-      await this.prompt({ sessionId: record.id, text, operationId })
+      await this.prompt({ sessionId: record.id, text, operationId }, options.reasoningEffort)
       yield { type: 'block-start', index: 0, blockType: 'text' }
       while (true) {
         options.signal?.throwIfAborted()
