@@ -34,7 +34,8 @@ if(['delegate-review','delegate-tasks','delegate','delegate-start','delegate-pro
   if(!args.session)throw Error('缺少 --session')
   console.log(JSON.stringify(await harnessRpc(command.slice(9),{sessionId:args.session,...(args.operation?{operationId:args.operation}:{})})))
  }else{
-  if(command!=='delegate-prompt')for(const key of ['combination','cwd','task'])if(!args[key])throw Error('缺少 --'+key)
+  if(command!=='delegate-prompt')for(const key of ['cwd','task'])if(!args[key])throw Error('缺少 --'+key)
+  if(command!=='delegate-prompt'&&command!=='delegate'&&!args.combination)throw Error('缺少 --combination')
   if(args.cwd&&!isAbsolute(args.cwd))throw Error('--cwd 必须为绝对路径')
   let text
   if(command!=='delegate-start'){
@@ -42,8 +43,8 @@ if(['delegate-review','delegate-tasks','delegate','delegate-start','delegate-pro
    if(!isAbsolute(args['prompt-file']))throw Error('--prompt-file 必须为绝对路径')
    text=await readFile(args['prompt-file'],'utf8');if(!text.trim())throw Error('任务不能为空')
   }
-  if(command==='delegate'){console.log(JSON.stringify(await harnessRpc('delegate',{origin,combination:args.combination,cwd:args.cwd,taskId:args.task,operationId:args.operation,task:text,...(args.session?{sessionId:args.session}:{})})));process.exit(0)}
-  const started=command==='delegate-prompt'?{id:args.session}:await harnessRpc('start',{combination:args.combination,cwd:args.cwd,taskId:args.task,origin,...(args.session?{existingSessionId:args.session}:{})})
+  if(command==='delegate'){console.log(JSON.stringify(await harnessRpc('delegate',{origin,...(args.combination?{combination:args.combination}:{}),...(args.model?{model:args.model}:{}),cwd:args.cwd,taskId:args.task,operationId:args.operation,task:text,...(args.session?{sessionId:args.session}:{})})));process.exit(0)}
+  const started=command==='delegate-prompt'?{id:args.session}:await harnessRpc('start',{...(args.combination?{combination:args.combination}:{}),...(args.model?{model:args.model}:{}),cwd:args.cwd,taskId:args.task,origin,...(args.session?{existingSessionId:args.session}:{})})
   if(command==='delegate-start')console.log(JSON.stringify(started))
   else{
    if(!started.id)throw Error('缺少 --session')
