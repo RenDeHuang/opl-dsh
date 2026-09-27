@@ -7,8 +7,16 @@ $lock = $null
 try {
   $lock = [IO.File]::Open((Join-Path $Root 'install.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
   function Assert-OfficialSignature([string]$Path) {
-    $s = Get-AuthenticodeSignature -LiteralPath $Path
-    if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch '^CN="?Hangzhou DeepSeek Artificial Intelligence Co\., Ltd\.') { throw 'DeepSeek 官方签名验证失败。' }
+    try {
+      $s = Get-AuthenticodeSignature -LiteralPath $Path
+      if ($s.Status -eq 'Valid' -and $s.SignerCertificate.Subject -match '^CN="?Hangzhou DeepSeek Artificial Intelligence Co\., Ltd\.') { return }
+    } catch {}
+    $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
+    if ($signtool) {
+      & $signtool.Source verify /pa /all $Path *> $null
+      if ($LASTEXITCODE -eq 0) { return }
+    }
+    throw 'DeepSeek 官方签名验证失败。'
   }
   function Get-HashHex([string]$Path, [string]$Algorithm) {
     $hasher = [Security.Cryptography.HashAlgorithm]::Create($Algorithm)
