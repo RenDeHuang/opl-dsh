@@ -4,14 +4,25 @@ import { displayModelSource, selectableModels, modelRefKey } from '../contracts/
 import css from '../../shared/client/SettingsSection.module.css'
 import type { ExecutionCall as Call } from '../../shared/client/remote-call.ts'
 export function ExecutionCatalogSection({ call }: { call: Call }) {
-  const { catalog, availability, busy, notice, draft, setDraft, editing, setEditing, update, add } =
-    useExecutionCatalog(call)
+  const {
+    catalog,
+    availability,
+    busy,
+    notice,
+    retry,
+    draft,
+    setDraft,
+    editing,
+    setEditing,
+    update,
+    add,
+  } = useExecutionCatalog(call)
   return (
     <div className={css.section} data-opl-panel="catalog" aria-busy={busy || (!catalog && !notice)}>
       <h2 className={css.title}>运行配置</h2>
       <p className={css.intro}>
-        保存模型、渠道、Harness 与权限的搭配。原生 DSH 组合会出现在官方会话输入框；外部 Harness
-        组合由当前对话的委派工具使用，任务和交付由后台保存。模型在“模型”页管理，账号与凭据在“OPL
+        保存模型、渠道、Harness
+        与权限的搭配。已就绪的组合显示在官方会话输入框中；委派任务和交付由后台保存。模型在“模型”页管理，账号与凭据在“OPL
         Gateway”中管理。
       </p>
       {!catalog && !notice && (
@@ -24,6 +35,7 @@ export function ExecutionCatalogSection({ call }: { call: Call }) {
           {notice}
         </p>
       )}
+      {!catalog && notice && <Button onClick={retry}>重试</Button>}
       {catalog && (
         <details className={css.details}>
           <summary>添加运行配置</summary>

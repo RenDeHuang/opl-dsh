@@ -11,26 +11,38 @@ export function useExecutionCatalog(call: ExecutionCall) {
   const [availability, setAvailability] = useState<HarnessCatalog['combinations']>([])
   const [busy, setBusy] = useState(false),
     [notice, setNotice] = useState('')
+  const [loadRevision, setLoadRevision] = useState(0)
   const [draft, setDraft] = useState({ name: '', model: '', harness: 'dsh' })
   const [editing, setEditing] = useState<string>()
   const running = useRef(false),
     mounted = useRef(true)
   useEffect(() => {
     mounted.current = true
-    void Promise.all([call('catalog'), call('combinations')])
-      .then(([next, combinations]) => {
-        if (mounted.current) {
-          setCatalog(next)
-          setAvailability(combinations)
+    let cancelled = false
+    void (async () => {
+      for (let attempt = 0; attempt < 3 && !cancelled; attempt++) {
+        try {
+          const [next, combinations] = await Promise.all([call('catalog'), call('combinations')])
+          if (!cancelled) {
+            setCatalog(next)
+            setAvailability(combinations)
+            setNotice('')
+          }
+          return
+        } catch {
+          if (attempt === 2) {
+            if (!cancelled) setNotice('无法读取组合目录')
+          } else {
+            await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)))
+          }
         }
-      })
-      .catch(() => {
-        if (mounted.current) setNotice('无法读取组合目录')
-      })
+      }
+    })()
     return () => {
+      cancelled = true
       mounted.current = false
     }
-  }, [call])
+  }, [call, loadRevision])
   const save = async (next: ExecutionCatalog) => {
     if (running.current) return false
     running.current = true
@@ -93,5 +105,20 @@ export function useExecutionCatalog(call: ExecutionCall) {
     })
     if (saved && mounted.current) setDraft({ name: '', model: '', harness: 'dsh' })
   }
-  return { catalog, availability, busy, notice, draft, setDraft, editing, setEditing, update, add }
+  return {
+    catalog,
+    availability,
+    busy,
+    notice,
+    retry: () => {
+      setNotice('')
+      setLoadRevision((value) => value + 1)
+    },
+    draft,
+    setDraft,
+    editing,
+    setEditing,
+    update,
+    add,
+  }
 }
