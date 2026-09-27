@@ -4,18 +4,18 @@ OPL DSH 维护一个增强包 `@one-person-lab/dsh-opl`，使用未修改的官�
 
 ## 模块与依赖
 
-| 目录                | 职责                                                        | 依赖边界                                                                                |
-| ------------------- | ----------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| `src/suite`         | Host/Client 装配、套件配置、执行生命周期连接                | 组合能力，不保存另一套业务状态                                                          |
-| `src/gateway`       | 账号、分组凭据、原生模型配置、路由和搜索，以及对应页面      | 不依赖执行与协作模块；`host/execution-access.ts` 提供 Host 内部的模型读取与执行凭据入口 |
-| `src/execution`     | Harness 目录、组合、会话、执行器适配、工作区与选择器        | 使用官方 DSH Session 或外部官方执行器，不实现 Agent 循环                                |
-| `src/collaboration` | Agent 协作工具、外部 Codex 接入、Skill 管理、反馈及任务卡片 | 共用执行模块的父子对话与交付记录；旧 TaskFeedback 协议用于兼容原生 dispatch             |
-| `src/setup`         | 首启与账号选择                                              | 官方账号与稍后设置不依赖 Gateway 服务挂载                                               |
-| `src/compat`        | 必要的官方 UI 结构适配、旧调用入口                          | 新客户端不调用旧接口；模型写操作仍归 Gateway                                            |
-| `src/shared`        | 共同使用的模型标识、带类型的 Remote 调用、控制传输及样式    | 不保存业务状态，不提供通用杂物接口                                                      |
-| `src/contracts`     | 对外公开的纯类型汇总                                        | 用于生成声明；不引入 Host 实现                                                          |
-| `src/generated`     | 官方 Typert 生成的 Host/Remote/声明                         | 只从源代码重建，不手工维护                                                              |
-| `installer`         | 安装、迁移、更新、官方校验及 Skill 分发                     | 只操作套件拥有的文件，保留用户修改                                                      |
+| 目录                | 职责                                                     | 依赖边界                                                                                |
+| ------------------- | -------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `src/suite`         | Host/Client 装配、套件配置、执行生命周期连接             | 组合能力，不保存另一套业务状态                                                          |
+| `src/gateway`       | 账号、分组凭据、原生模型配置、路由和搜索，以及对应页面   | 不依赖执行与协作模块；`host/execution-access.ts` 提供 Host 内部的模型读取与执行凭据入口 |
+| `src/execution`     | Harness 目录、组合、会话、执行器适配、工作区与选择器     | 使用官方 DSH Session 或外部官方执行器，不实现 Agent 循环                                |
+| `src/collaboration` | Agent 协作工具、外部 Codex 接入、Skill 管理和反馈        | 共用执行模块的父子对话与交付记录；旧 TaskFeedback 协议用于兼容原生 dispatch             |
+| `src/setup`         | 首启与账号选择                                           | 官方账号与稍后设置不依赖 Gateway 服务挂载                                               |
+| `src/compat`        | 必要的官方 UI 结构适配、旧调用入口                       | 新客户端不调用旧接口；模型写操作仍归 Gateway                                            |
+| `src/shared`        | 共同使用的模型标识、带类型的 Remote 调用、控制传输及样式 | 不保存业务状态，不提供通用杂物接口                                                      |
+| `src/contracts`     | 对外公开的纯类型汇总                                     | 用于生成声明；不引入 Host 实现                                                          |
+| `src/generated`     | 官方 Typert 生成的 Host/Remote/声明                      | 只从源代码重建，不手工维护                                                              |
+| `installer`         | 安装、迁移、更新、官方校验及 Skill 分发                  | 只操作套件拥有的文件，保留用户修改                                                      |
 
 功能内部使用 `host/`、`client/`、`contracts/`。Gateway 模型页面直接调用 `oplGatewayModels`；执行、首启、安装协作设置分别调用 `oplExecution`、`oplSetup`、`oplCoordination`。账户仍使用 `oplGatewayAccount`。Host 与 Client 分别声明实际依赖，执行和 Skill 设置不以账户服务为共同前提。
 
@@ -49,7 +49,7 @@ npm test
 
 组合目录只保存模型引用、Harness 引用、默认/启用状态和权限。`ExecutionModelResolver` 从官方模型注册表和 Gateway 读取投影，不另存模型连接。新增执行器应提供一个适配器及其协议/权限/恢复测试，不在中心服务增加账户或 Provider 配置分支。
 
-通用协作记录父子对话、明确任务、验收要求、执行状态、交付和回传状态。执行完成不等于验收通过。同项目写任务按现有协作规则排队，只读任务可并行；取消父任务传递给后代，子任务不能扩大权限。外部 Codex 开关只限制外部桥接，不关闭内部 Codex CLI 组合。
+通用协作后台记录父子对话、明确任务、验收要求、执行状态、交付和回传状态。执行完成不等于验收通过。同项目写任务按现有协作规则排队，只读任务可并行；取消父任务传递给后代，子任务不能扩大权限。主界面保持官方 DSH 会话 UI，不渲染第二套外部会话列表；外部 Codex 开关只限制外部桥接，不关闭内部 Codex CLI 组合。
 
 TaskFeedback 的事件投影、纯状态决策、持久回执与投递调度分别位于 `session-facts.ts`、`state.ts`、`receipts.ts`、`delivery.ts`。Remote 服务仍负责唯一的恢复与编排，不再增加一套通知数据库。
 

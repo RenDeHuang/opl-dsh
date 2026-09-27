@@ -40,14 +40,12 @@ export function CombinationSelect({
   call,
   sessionId,
   locked,
-  openExternal,
   available,
 }: {
   available: boolean
   call: Call
   sessionId: string
   locked: boolean
-  openExternal: (id: string) => void
 }) {
   const [selection, setSelection] = useState<SelectionState>({ current: null, groups: [] })
   const [catalog, setCatalog] = useState<ExecutionCatalog>()
@@ -93,37 +91,44 @@ export function CombinationSelect({
   const visibleChoices = useMemo<Choice[]>(() => {
     if (!catalog) return []
     const seen = new Set<string>()
-    return catalog.combinations
-      .filter((combination) => combination.enabled)
-      .filter((combination) => {
-        const status = availability.find((item) => item.id === combination.id)
-        return status?.available === true || combination.id === selection.combination
-      })
-      .sort(
-        (left, right) =>
-          Number(!left.isDefault) - Number(!right.isDefault) || left.name.localeCompare(right.name),
-      )
-      .filter((combination) => {
-        const model = modelFor(combination)
-        const harness = harnessFor(combination)
-        const label = `${sourceLabel(combination.modelRef.provider, model?.source ?? combination.modelRef.provider)} · ${model?.name ?? combination.modelRef.model} · ${harness?.name ?? combination.harnessRef}`
-        if (seen.has(label)) return false
-        seen.add(label)
-        return true
-      })
-      .map((combination) => {
-        const model = modelFor(combination)
-        const harness = harnessFor(combination)
-        return {
-          combination,
-          modelName: model?.name ?? combination.modelRef.model,
-          harnessName: harness?.name ?? combination.harnessRef,
-          source: sourceLabel(
-            combination.modelRef.provider,
-            model?.source ?? combination.modelRef.provider,
-          ),
-        }
-      })
+    return (
+      catalog.combinations
+        .filter((combination) => combination.enabled)
+        // External Harnesses remain backend-managed delegation targets. The
+        // native DSH composer only presents combinations it can execute in the
+        // ordinary DSH conversation UI.
+        .filter((combination) => combination.harnessRef === 'dsh')
+        .filter((combination) => {
+          const status = availability.find((item) => item.id === combination.id)
+          return status?.available === true || combination.id === selection.combination
+        })
+        .sort(
+          (left, right) =>
+            Number(!left.isDefault) - Number(!right.isDefault) ||
+            left.name.localeCompare(right.name),
+        )
+        .filter((combination) => {
+          const model = modelFor(combination)
+          const harness = harnessFor(combination)
+          const label = `${sourceLabel(combination.modelRef.provider, model?.source ?? combination.modelRef.provider)} · ${model?.name ?? combination.modelRef.model} · ${harness?.name ?? combination.harnessRef}`
+          if (seen.has(label)) return false
+          seen.add(label)
+          return true
+        })
+        .map((combination) => {
+          const model = modelFor(combination)
+          const harness = harnessFor(combination)
+          return {
+            combination,
+            modelName: model?.name ?? combination.modelRef.model,
+            harnessName: harness?.name ?? combination.harnessRef,
+            source: sourceLabel(
+              combination.modelRef.provider,
+              model?.source ?? combination.modelRef.provider,
+            ),
+          }
+        })
+    )
   }, [availability, catalog, selection.combination])
 
   const selected =
@@ -204,14 +209,9 @@ export function CombinationSelect({
         sessionId,
         combination: choice.combination.id,
       })
-      if (result.kind === 'external') {
-        setSelection((current) => ({ ...current, combination: choice.combination.id }))
-        close(true)
-        openExternal(result.sessionId)
-      } else {
-        setSelection(await call('model-selection', { sessionId }))
-        close(true)
-      }
+      if (result.kind !== 'native') throw Error('外部 Harness 请通过当前 DSH 对话委派任务')
+      setSelection(await call('model-selection', { sessionId }))
+      close(true)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '选择失败')
     } finally {

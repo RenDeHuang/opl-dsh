@@ -2,7 +2,7 @@
 
 本轮使用同一 HarnessService 管理内部协作和新的外部 Codex delegate 任务。内部 DSH 工具与每个外部 Harness 的私有 MCP capability 均绑定真实父会话；外部 Codex 桥接独立成模块，可单独关闭。旧 dispatch 反馈接口保留兼容。
 
-已实现同项目委派、同步等待与异步交付、报告与验收分离、要求修改后继续原子对话、取消后代、项目写队列、只读并行、重启不重发，以及持久交付去重。原生对话使用官方 input.dock 任务卡，外部对话使用项目协作面板；设置以内置协作为主，外部 Codex 接入折叠呈现。
+已实现同项目委派、同步等待与异步交付、报告与验收分离、要求修改后继续原子对话、取消后代、项目写队列、只读并行、重启不重发，以及持久交付去重。主界面保持官方 DSH 会话列表、消息流和输入框；外部任务的组合、父子关系、交付与验收由后台 `HarnessService` 持久化，设置页只保留运行配置与外部接入维护。
 
 ## 验收
 
@@ -14,7 +14,7 @@ Host/Client 类型检查、构建及 172 项测试通过。行为测试覆盖修
 
 ## 后续模块化整合边界
 
-功能改动保持现有路径，尚未提交推送。主要写集：src/control.ts、src/coordination/harness.ts、harness-types.ts、control-bridge.ts、native-harness-bridge.ts、新增 external-codex.ts、src/setup-config.ts、src/client.tsx、新增 CollaborationTasks.tsx、HarnessPanel.tsx/CSS、CoordinationSection.tsx、SettingsSection.module.css、installer/skill/{control.mjs,harness-mcp.mjs,SKILL.md}、tests/coordination/harness.spec.ts。README 与架构文档同步说明当前行为。保留此前所有未提交改动；没有进行结构搬迁或改写官方会话格式。
+功能改动保持现有路径，主要写集仍由 Host、Client、契约、Skill 和测试模块承担；独立的 `HarnessPanel`、任务列表 dock 及其专用 CSS 已移除，避免维护第二套会话 UI。README 与架构文档同步说明当前行为，没有进行结构搬迁或改写官方会话格式。
 
 本机日常 profile 已更新至最终包 afdc86968764，安装包 SHA-256 与构建产物一致；官方桌面正常启动、八个运行配置可用，当前没有执行中的任务。已打开“协作与自动化”供检查。
 
