@@ -11,6 +11,11 @@ try {
       $s = Get-AuthenticodeSignature -LiteralPath $Path
       if ($s.Status -eq 'Valid' -and $s.SignerCertificate.Subject -match '^CN="?Hangzhou DeepSeek Artificial Intelligence Co\., Ltd\.') { return }
     } catch {}
+    $certutil = Get-Command certutil.exe -ErrorAction SilentlyContinue
+    if ($certutil) {
+      & $certutil.Source -verify -urlfetch $Path *> $null
+      if ($LASTEXITCODE -eq 0) { return }
+    }
     $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
     if ($signtool) {
       & $signtool.Source verify /pa /all $Path *> $null
