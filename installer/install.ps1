@@ -10,6 +10,15 @@ try {
     $s = Get-AuthenticodeSignature -LiteralPath $Path
     if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch '^CN="?Hangzhou DeepSeek Artificial Intelligence Co\., Ltd\.') { throw 'DeepSeek 官方签名验证失败。' }
   }
+  function Get-HashHex([string]$Path, [string]$Algorithm) {
+    $hasher = [Security.Cryptography.HashAlgorithm]::Create($Algorithm)
+    if (-not $hasher) { throw ('无法创建校验算法：' + $Algorithm) }
+    try {
+      return [BitConverter]::ToString($hasher.ComputeHash([IO.File]::ReadAllBytes($Path))).Replace('-', '').ToLowerInvariant()
+    } finally {
+      $hasher.Dispose()
+    }
+  }
   function Feed-Scalar([string]$Text,[string]$Name) {
     $m = [regex]::Matches($Text, '(?m)^' + $Name + ':\s*(?:[>|]-?\r?\n[ \t]+)?([^\r\n]+)\r?$')
     if ($m.Count -ne 1) { throw '官方更新清单无效。' }
@@ -61,7 +70,7 @@ try {
       Move-Item -LiteralPath ($archive + '.part') -Destination $archive
     }
     $expected = [BitConverter]::ToString([Convert]::FromBase64String($sha512)).Replace('-', '')
-    if ((Get-FileHash -LiteralPath $archive -Algorithm SHA512).Hash -ne $expected) { throw '官方安装文件校验失败。' }
+    if ((Get-HashHex $archive 'SHA512') -ne $expected.ToLowerInvariant()) { throw '官方安装文件校验失败。' }
     Assert-OfficialSignature $archive
     $process = Start-Process -FilePath $archive -ArgumentList @('/S', "/D=$app") -Wait -PassThru
     if ($process.ExitCode -ne 0) { throw '官方运行环境安装失败。' }

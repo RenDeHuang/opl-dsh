@@ -18,7 +18,9 @@ try {
     $match = [regex]::Matches($checksums, '(?m)^([0-9a-f]{64})  OPL-DSH-Enhancements\.zip\r?$')
     if ($match.Count -ne 1) { throw '增强包校验信息无效。' }
     $archive = Join-Path $stage 'OPL-DSH-Enhancements.zip'
-    if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne $match[0].Groups[1].Value) { throw '增强包校验失败，未执行安装。' }
+    $hasher = [Security.Cryptography.SHA256]::Create()
+    try { $actual = [BitConverter]::ToString($hasher.ComputeHash([IO.File]::ReadAllBytes($archive))).Replace('-', '').ToLowerInvariant() } finally { $hasher.Dispose() }
+    if ($actual -ne $match[0].Groups[1].Value.ToLowerInvariant()) { throw '增强包校验失败，未执行安装。' }
     $payload = Join-Path $stage 'payload'
     Expand-Archive -LiteralPath $archive -DestinationPath $payload
     $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $payload 'install.ps1'))
