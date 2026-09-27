@@ -11,6 +11,16 @@ try {
       $s = Get-AuthenticodeSignature -LiteralPath $Path
       if ($s.Status -eq 'Valid' -and $s.SignerCertificate.Subject -match '^CN="?Hangzhou DeepSeek Artificial Intelligence Co\., Ltd\.') { return }
     } catch {}
+    $legacy = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (Test-Path -LiteralPath $legacy) {
+      $env:OPL_SIGNED_PATH = $Path
+      try {
+        $result = & $legacy -NoProfile -NonInteractive -Command '$s=Get-AuthenticodeSignature -LiteralPath $env:OPL_SIGNED_PATH; if($s.Status -eq "Valid" -and $s.SignerCertificate.Subject -match "^CN=\"?Hangzhou DeepSeek Artificial Intelligence Co\\., Ltd\\."){"OPL_SIGNATURE_OK"}' 2>$null
+        if ($result -contains 'OPL_SIGNATURE_OK') { return }
+      } finally {
+        Remove-Item Env:OPL_SIGNED_PATH -ErrorAction SilentlyContinue
+      }
+    }
     $certutil = Get-Command certutil.exe -ErrorAction SilentlyContinue
     if ($certutil) {
       & $certutil.Source -verify -urlfetch $Path *> $null
