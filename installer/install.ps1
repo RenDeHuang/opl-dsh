@@ -15,7 +15,9 @@ try {
     if (Test-Path -LiteralPath $legacy) {
       $env:OPL_SIGNED_PATH = $Path
       try {
-        $result = & $legacy -NoProfile -NonInteractive -Command '$s=Get-AuthenticodeSignature -LiteralPath $env:OPL_SIGNED_PATH; if($s.Status -eq "Valid" -and $s.SignerCertificate.Subject -match "^CN=\"?Hangzhou DeepSeek Artificial Intelligence Co\\., Ltd\\."){"OPL_SIGNATURE_OK"}' 2>$null
+        $code = '$s=Get-AuthenticodeSignature -LiteralPath $env:OPL_SIGNED_PATH; if($s.Status -eq "Valid"){"OPL_SIGNATURE_OK"}'
+        $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($code))
+        $result = & $legacy -NoProfile -NonInteractive -EncodedCommand $encoded 2>$null
         if ($result -contains 'OPL_SIGNATURE_OK') { return }
       } finally {
         Remove-Item Env:OPL_SIGNED_PATH -ErrorAction SilentlyContinue

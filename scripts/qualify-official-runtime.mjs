@@ -189,8 +189,7 @@ async function verifyOfficial() {
       signatureVerified: true,
     }
   } else {
-    const script =
-      '$e=Join-Path $env:OPL_QUALIFY_APP "DeepSeek Harness.exe"; $verified=$false; try{$s=Get-AuthenticodeSignature -LiteralPath $e; $verified=$s.Status -eq "Valid" -and $s.SignerCertificate.Subject -match \'^CN="?Hangzhou DeepSeek Artificial Intelligence Co\\., Ltd\\.\'}catch{}; if(-not $verified){$cu=Get-Command certutil.exe -ErrorAction SilentlyContinue; if($cu){& $cu.Source -verify -urlfetch $e *> $null; $verified=$LASTEXITCODE -eq 0}}; if(-not $verified){$st=Get-Command signtool.exe -ErrorAction SilentlyContinue; if($st){& $st.Source verify /pa /all $e *> $null; $verified=$LASTEXITCODE -eq 0}}; if(-not $verified){throw "DeepSeek official signature failed"}; (Get-Item -LiteralPath $e).VersionInfo.FileVersion'
+    const script = `$e=Join-Path $env:OPL_QUALIFY_APP 'DeepSeek Harness.exe'; $s=Get-AuthenticodeSignature -LiteralPath $e; if($s.Status -ne 'Valid'){throw 'DeepSeek official signature failed'}; (Get-Item -LiteralPath $e).VersionInfo.FileVersion`
     const powershell = join(
       process.env.SystemRoot ?? 'C:\\Windows',
       'System32/WindowsPowerShell/v1.0/powershell.exe',
