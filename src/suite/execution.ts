@@ -31,6 +31,7 @@ export const inject = [
  */
 export function apply(ctx: Context, _config: Record<string, never>): void {
   const harness = createHarnessService(ctx)
+  ctx.on('llm/stream', (options, next) => harness.conversationStream(options, next))
   new ExecutionService(ctx, harness)
   ctx.effect(() => () => harness.dispose())
   installCollaborationTools(ctx, harness)

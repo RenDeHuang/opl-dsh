@@ -35,7 +35,7 @@ function choiceLabel(choice: Choice): string {
   return `${choice.modelName} · ${choice.harnessName}`
 }
 
-/** DSH 原生模型菜单的 OPL 组合投影：模型项代表“模型 + Harness”组合。 */
+/** 官方 DSH 模型菜单的 OPL 组合投影：模型项代表“模型 + Harness”组合。 */
 export function CombinationSelect({
   call,
   sessionId,
@@ -91,44 +91,37 @@ export function CombinationSelect({
   const visibleChoices = useMemo<Choice[]>(() => {
     if (!catalog) return []
     const seen = new Set<string>()
-    return (
-      catalog.combinations
-        .filter((combination) => combination.enabled)
-        // External Harnesses remain backend-managed delegation targets. The
-        // native DSH composer only presents combinations it can execute in the
-        // ordinary DSH conversation UI.
-        .filter((combination) => combination.harnessRef === 'dsh')
-        .filter((combination) => {
-          const status = availability.find((item) => item.id === combination.id)
-          return status?.available === true || combination.id === selection.combination
-        })
-        .sort(
-          (left, right) =>
-            Number(!left.isDefault) - Number(!right.isDefault) ||
-            left.name.localeCompare(right.name),
-        )
-        .filter((combination) => {
-          const model = modelFor(combination)
-          const harness = harnessFor(combination)
-          const label = `${sourceLabel(combination.modelRef.provider, model?.source ?? combination.modelRef.provider)} · ${model?.name ?? combination.modelRef.model} · ${harness?.name ?? combination.harnessRef}`
-          if (seen.has(label)) return false
-          seen.add(label)
-          return true
-        })
-        .map((combination) => {
-          const model = modelFor(combination)
-          const harness = harnessFor(combination)
-          return {
-            combination,
-            modelName: model?.name ?? combination.modelRef.model,
-            harnessName: harness?.name ?? combination.harnessRef,
-            source: sourceLabel(
-              combination.modelRef.provider,
-              model?.source ?? combination.modelRef.provider,
-            ),
-          }
-        })
-    )
+    return catalog.combinations
+      .filter((combination) => combination.enabled)
+      .filter((combination) => {
+        const status = availability.find((item) => item.id === combination.id)
+        return status?.available === true || combination.id === selection.combination
+      })
+      .sort(
+        (left, right) =>
+          Number(!left.isDefault) - Number(!right.isDefault) || left.name.localeCompare(right.name),
+      )
+      .filter((combination) => {
+        const model = modelFor(combination)
+        const harness = harnessFor(combination)
+        const label = `${sourceLabel(combination.modelRef.provider, model?.source ?? combination.modelRef.provider)} · ${model?.name ?? combination.modelRef.model} · ${harness?.name ?? combination.harnessRef}`
+        if (seen.has(label)) return false
+        seen.add(label)
+        return true
+      })
+      .map((combination) => {
+        const model = modelFor(combination)
+        const harness = harnessFor(combination)
+        return {
+          combination,
+          modelName: model?.name ?? combination.modelRef.model,
+          harnessName: harness?.name ?? combination.harnessRef,
+          source: sourceLabel(
+            combination.modelRef.provider,
+            model?.source ?? combination.modelRef.provider,
+          ),
+        }
+      })
   }, [availability, catalog, selection.combination])
 
   const selected =
@@ -136,7 +129,6 @@ export function CombinationSelect({
     visibleChoices.find(
       (choice) =>
         selection.current &&
-        choice.combination.harnessRef === 'dsh' &&
         choice.combination.modelRef.provider === selection.current.provider &&
         choice.combination.modelRef.model === selection.current.model,
     ) ??
@@ -205,11 +197,10 @@ export function CombinationSelect({
     setBusy(true)
     setError('')
     try {
-      const result = await call('select-combination', {
+      await call('select-combination', {
         sessionId,
         combination: choice.combination.id,
       })
-      if (result.kind !== 'native') throw Error('外部 Harness 请通过当前 DSH 对话委派任务')
       setSelection(await call('model-selection', { sessionId }))
       close(true)
     } catch (cause) {
@@ -407,7 +398,7 @@ export function CombinationSelect({
                   <span className={css.cellValue}>{modelLabel}</span>
                   <IconChevronRightOutlineRegular className={css.cellChevron} />
                 </button>
-                {reasoning !== undefined && (
+                {reasoning !== undefined && selected?.combination.harnessRef === 'dsh' && (
                   <button
                     ref={itemRef()}
                     type="button"

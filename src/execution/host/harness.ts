@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { startControlBridge } from '../../shared/host/control-bridge.ts'
 import { homedir } from 'node:os'
 import { EventEmitter } from 'node:events'
+import { LlmError, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import type { Context } from '@deepseek-ai/cordis'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { setSandboxMode } from '@deepseek-ai/dsh-sandbox-policy'
@@ -80,6 +81,10 @@ export { grokConfiguration } from './adapters/grok.ts'
 export { nativeHarnessMatches, defaultHarness } from './adapters/index.ts'
 export class HarnessService {
   private selections: Record<string, string> = {}
+  private readonly conversationOwners = new Map<
+    string,
+    { sessionId: string; signal?: AbortSignal }
+  >()
   private readonly maintenance = new Map<string, NonNullable<HarnessInstallation['maintenance']>>()
   private readonly maintenanceJobs = new Map<string, Promise<void>>()
   private readonly records = new Map<string, HarnessSession>()
@@ -656,7 +661,7 @@ export class HarnessService {
             fs: { readTextFile: false, writeTextFile: false },
             terminal: false,
           },
-          clientInfo: { name: 'opl-dsh', version: '0.2.7' },
+          clientInfo: { name: 'opl-dsh', version: '0.2.8' },
         }),
       )
       if (init.protocolVersion !== 1) throw Error('Harness 未协商 ACP v1')
@@ -738,6 +743,29 @@ export class HarnessService {
     active.turn.state = 'waiting_approval'
     this.changed(record)
     void this.save(record).catch(() => this.cancel({ sessionId: record.id }))
+    const owner = this.conversationOwners.get(record.id)
+    const agent = owner && this.ctx.agents.get(asSessionId<SessionId>(owner.sessionId))
+    if (agent) {
+      void (async () => {
+        const outcome = await this.ctx.get('approval')?.request({
+          agent,
+          toolName: record.harnessRef,
+          reason: active.approvals.get(id)!.title,
+          ...(owner.signal ? { signal: owner.signal } : {}),
+        })
+        if (!active.approvals.has(id)) return
+        const option = options.find(
+          (item) => item.kind === (outcome === 'allowed-once' ? 'allow_once' : 'reject_once'),
+        )
+        await this.answer({
+          sessionId: record.id,
+          approvalId: id,
+          ...(option?.optionId ? { optionId: option.optionId } : {}),
+        })
+      })().catch(() => {
+        if (active.approvals.has(id)) void this.answer({ sessionId: record.id, approvalId: id })
+      })
+    }
   }
   async answer(input: { sessionId: string; approvalId: string; optionId?: string }) {
     await this.ready
@@ -1467,16 +1495,18 @@ export class HarnessService {
       (item) =>
         item.enabled &&
         item.id === this.selections[sessionId] &&
-        item.harnessRef === 'dsh' &&
         modelRefKey(item.modelRef) === modelRefKey(current),
     )
     return { current, groups: catalog.groups, ...(selected ? { combination: selected.id } : {}) }
   }
   async selectCombination(input: { sessionId: string; combination: string }) {
+    await this.ready
     const session = this.ctx.sessions.get(
       asSessionId<SessionId>(required(input.sessionId, 'sessionId')),
     )
     if (!session) throw Error('对话不存在')
+    if (this.ctx.agents.get(session.id)?.status === 'running')
+      throw Error('请等待当前轮次结束后切换组合')
     const catalog = await this.executionCatalog(),
       definition = catalog.combinations.find(
         (item) => item.id === input.combination && item.enabled,
@@ -1501,9 +1531,111 @@ export class HarnessService {
       combination: definition.id,
       cwd: session.header.cwd,
       origin: { kind: 'dsh', sessionId: session.id },
+      taskId: 'conversation:' + definition.id,
       sandbox,
     })
+    await this.native('selectModel', { sessionId: session.id, ...definition.modelRef })
+    await this.bindSelection(session.id, definition.id)
     return { kind: 'external', sessionId: child.id }
+  }
+  /** Bridge external official Harness output through the official conversation stream. */
+  async *conversationStream(
+    options: GenerateOptions,
+    next: () => AsyncIterable<StreamChunk>,
+  ): AsyncIterable<StreamChunk> {
+    await this.ready
+    const definition = (await this.executionCatalog()).combinations.find(
+      (item) =>
+        item.enabled &&
+        item.id === this.selections[options.sessionId ?? ''] &&
+        modelRefKey(item.modelRef) === modelRefKey(options),
+    )
+    if (!options.sessionId || options.purpose || !definition || definition.harnessRef === 'dsh') {
+      yield* next()
+      return
+    }
+    const record = [...this.records.values()].find(
+      (item) =>
+        item.origin.kind === 'dsh' &&
+        item.origin.sessionId === options.sessionId &&
+        item.combination === definition.id &&
+        !item.assignment,
+    )
+    if (!record)
+      throw new LlmError('会话的 Harness 绑定缺失，请重新选择运行配置', 'HARNESS_BINDING')
+    await this.connect(record)
+    const user = options.messages.findLast((message) => message.role === 'user')
+    if (!user) throw new LlmError('没有可执行的用户输入', 'HARNESS_INPUT')
+    const operationId = 'conversation:' + hash(user)
+    const previous = record.turns.find((turn) => turn.operationId === operationId)
+    const messages =
+      record.turns.length && !previous
+        ? [user]
+        : previous
+          ? []
+          : options.messages.filter((message) => ['user', 'assistant'].includes(message.role))
+    const text =
+      previous?.prompt ??
+      messages
+        .map((message) => {
+          if (message.content.some((part) => part.type !== 'text'))
+            throw new LlmError(
+              '该 Harness 会话暂不支持直接附件，请提供项目内文件路径',
+              'HARNESS_INPUT',
+            )
+          return `${message.role}: ${message.content
+            .filter((part) => part.type === 'text')
+            .map((part) => part.text)
+            .join('\n')}`
+        })
+        .join('\n\n')
+    this.conversationOwners.set(record.id, {
+      sessionId: options.sessionId,
+      ...(options.signal ? { signal: options.signal } : {}),
+    })
+    const cancel = () => {
+      void this.cancel({ sessionId: record.id }, false)
+    }
+    options.signal?.addEventListener('abort', cancel, { once: true })
+    let offset = 0
+    try {
+      options.signal?.throwIfAborted()
+      await this.prompt({ sessionId: record.id, text, operationId })
+      yield { type: 'block-start', index: 0, blockType: 'text' }
+      while (true) {
+        options.signal?.throwIfAborted()
+        const turn = record.turns.find((item) => item.operationId === operationId)!
+        if (turn.text.length > offset) {
+          yield { type: 'text-delta', index: 0, text: turn.text.slice(offset) }
+          offset = turn.text.length
+        }
+        if (
+          !['queued', 'running', 'waiting_child', 'waiting_approval', 'waiting_input'].includes(
+            turn.state,
+          )
+        ) {
+          if (turn.state !== 'completed')
+            throw new LlmError(turn.error ?? 'Harness 执行已取消或中断', 'HARNESS_FAILED')
+          yield { type: 'block-end', index: 0, block: { type: 'text', text: turn.text } }
+          yield { type: 'finish', reason: { kind: 'stop' } }
+          return
+        }
+        await new Promise<void>((resolve) => {
+          const cleanup = () => {
+            this.events.off(record.id, changed)
+            options.signal?.removeEventListener('abort', changed)
+            resolve()
+          }
+          const changed = () => cleanup()
+          this.events.once(record.id, changed)
+          options.signal?.addEventListener('abort', changed, { once: true })
+          if (options.signal?.aborted) cleanup()
+        })
+      }
+    } finally {
+      options.signal?.removeEventListener('abort', cancel)
+      this.conversationOwners.delete(record.id)
+    }
   }
   async invoke(
     method: string,

@@ -42,7 +42,7 @@ OPL DSH 在官方桌面上提供账号自动配置、Harness 管理和组合选�
 - **Harness**：检测 DSH、Grok Build、Codex CLI、Claude Code、Antigravity CLI（agy）的安装、版本与路径；可登记其他程序。Codex CLI 与 Claude Code 会搜索登录 Shell PATH、常见用户目录和官方桌面附带目录；已安装时调用官方更新器，未安装时提供固定官方一键安装入口，安装后重新检测绝对路径和版本。内置 DSH 随官方桌面更新，不可删除。
 - **组合**：从 DSH 模型目录选择模型，绑定 Harness 与权限。每个模型可指定一个默认组合；没有自定义默认时，GPT 默认 Codex CLI、Claude 默认 Claude Code，其他模型使用已配置的官方默认组合。
 
-对话输入栏沿用 DSH 原生模型选择器和官方会话 UI，选项显示“模型 · Harness”，来源仅作为展开菜单的分组标题。没有凭据的官方 DeepSeek 模型不作为可选项。可由 DSH 原生 Agent 执行的组合调用官方 Session 的模型选择接口；只读组合可以收窄权限，不会静默扩大当前权限。外部 Harness 组合不接管原生输入框，而是由当前 DSH/Codex 对话通过委派工具创建同项目子任务；原生会话列表不会出现第二套 OPL 管理页面。
+对话输入栏沿用 DSH 原生模型选择器和官方会话 UI，选项显示“模型 · Harness”，来源仅作为展开菜单的分组标题。没有凭据的官方 DeepSeek 模型不作为可选项。DSH 原生组合调用官方 Session 的模型选择接口；外部 Harness 组合绑定到当前官方 Session，由 Host 在 `llm/stream` 阶段转发同一轮请求并把文本流回官方 Session。只读组合可以收窄权限，不会静默扩大当前权限。原生会话列表不会出现第二套 OPL 管理页面；父子委派工具仍用于需要显式子任务、交付验收或跨 Harness 协作的场景。
 
 每个原生对话选中的组合 ID 保存在 OPL 自有的 `combination-selection.json`，用于重启后区分同一模型的多个自定义组合。它只关联官方会话 ID，不改变官方会话格式；组合停用或模型被其他入口切换后，不再采用失配的关联。
 
