@@ -150,7 +150,7 @@ async function openCodex() {
     })().catch(() => rejectTurn?.(Error('Codex 消息处理失败')))
   })
   await codexRequest('initialize', {
-    clientInfo: { name: 'opl-dsh', version: '0.2.12' },
+    clientInfo: { name: 'opl-dsh', version: '0.2.13' },
     capabilities: { experimentalApi: true },
   })
   child.stdin!.write(JSON.stringify({ method: 'initialized', params: {} }) + '\n')

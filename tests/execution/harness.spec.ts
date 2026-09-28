@@ -3,6 +3,13 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
+import {
+  createUserMessage,
+  createAssistantMessage,
+  createToolResultMessage,
+  type GenerateOptions,
+  type ToolCallId,
+} from '@deepseek-ai/dsh-llm'
 import { HarnessSessionStore } from '../../src/execution/host/session-store.ts'
 import {
   HarnessService,
@@ -44,7 +51,7 @@ async function nativeSetup(
 ) {
   const { root, options } = await setup()
   let current = { provider: 'opl-gateway', model: 'codex::test-model' }
-  const session = { id: 'native-session', append: vi.fn() }
+  const session = { id: 'native-session', header: { cwd: root }, append: vi.fn() }
   const ctx = {
     get: () => undefined,
     agents: { get: () => undefined },
@@ -79,6 +86,115 @@ async function nativeSetup(
   }
 }
 describe('native conversation combinations', () => {
+  it('hands off tool history through the official conversation stream and sends only new input on continuation', async () => {
+    const { service, root, session } = await nativeSetup([{ id: 'grok::grok-4.7', name: 'Grok' }])
+    await service.selectCombination({ sessionId: session.id, combination: GROK_COMBINATION })
+    const callId = 'read-1' as ToolCallId
+    const messages = [
+      createUserMessage({
+        source: { kind: 'user' },
+        content: [{ type: 'text', text: 'read README' }],
+      }),
+      createAssistantMessage({
+        source: { provider: 'opl-gateway', model: 'deepseek-flash' },
+        content: [
+          { type: 'reasoning', text: 'private-reasoning' },
+          { type: 'tool-call', id: callId, name: 'read', arguments: '{"path":"README.md"}' },
+        ],
+      }),
+      createToolResultMessage({
+        callId,
+        isError: false,
+        content: [{ type: 'text', text: 'cedar-271' }],
+      }),
+      createUserMessage({
+        source: { kind: 'user' },
+        content: [{ type: 'text', text: 'continue-here' }],
+      }),
+    ]
+    const options = {
+      sessionId: session.id,
+      provider: 'opl-gateway',
+      model: 'grok::grok-4.7',
+      messages,
+    } as GenerateOptions
+    const next = vi.fn(async function* () {})
+    const chunks = await Array.fromAsync(service.conversationStream(options, next))
+    const prompt = await readFile(join(root, 'calls.txt'), 'utf8')
+    expect(next).not.toHaveBeenCalled()
+    expect(prompt).toContain('历史工具调用 read (read-1): {"path":"README.md"}')
+    expect(prompt).toContain('tool (read-1): cedar-271')
+    expect(prompt).toContain('不要重新执行历史任务或工具调用')
+    expect(prompt).toContain('当前用户请求：\nuser: continue-here')
+    expect(prompt).not.toContain('private-reasoning')
+    expect(chunks.at(-1)).toMatchObject({ type: 'finish', reason: { kind: 'stop' } })
+    const followup = createUserMessage({
+      source: { kind: 'user' },
+      content: [{ type: 'text', text: 'next-turn' }],
+    })
+    await Array.fromAsync(
+      service.conversationStream({ ...options, messages: [...messages, followup] }, next),
+    )
+    expect(await readFile(join(root, 'calls.txt'), 'utf8')).toBe(prompt + 'user: next-turn\n')
+  })
+  it('rejects real attachments without dispatching a prompt', async () => {
+    const { service, root, session } = await nativeSetup([{ id: 'grok::grok-4.7', name: 'Grok' }])
+    await service.selectCombination({ sessionId: session.id, combination: GROK_COMBINATION })
+    const messages = [
+      createUserMessage({
+        source: { kind: 'user' },
+        content: [{ type: 'image', attachment: {} as never }],
+      }),
+    ]
+    await expect(
+      Array.fromAsync(
+        service.conversationStream(
+          {
+            sessionId: session.id,
+            provider: 'opl-gateway',
+            model: 'grok::grok-4.7',
+            messages,
+          } as GenerateOptions,
+          async function* () {},
+        ),
+      ),
+    ).rejects.toMatchObject({ code: 'HARNESS_INPUT' })
+    await expect(access(join(root, 'calls.txt'))).rejects.toThrow()
+  })
+  it('defaults Claude delegation to Kiro while preserving an explicit AWS combination', async () => {
+    const { service, root } = await nativeSetup([
+      { id: 'aws::claude-opus-5-5', name: 'Claude' },
+      { id: 'kiro::claude-opus-5-5', name: 'Claude' },
+    ])
+    const catalog = await service.executionCatalog()
+    const kiro = catalog.combinations.find(
+      (item) => item.modelRef.model === 'kiro::claude-opus-5-5',
+    )!
+    const aws = catalog.combinations.find((item) => item.modelRef.model === 'aws::claude-opus-5-5')!
+    const statuses = vi
+      .spyOn(service, 'combinations')
+      .mockResolvedValue([{ id: kiro.id, available: true }] as never)
+    const start = vi.spyOn(service, 'start').mockRejectedValue(Error('selected'))
+    const input = {
+      model: 'claude-opus-5-5',
+      cwd: root,
+      task: 'test',
+      taskId: 'test',
+      operationId: 'initial',
+    }
+    const origin = { kind: 'codex', sessionId: 'parent' } as const
+    try {
+      await expect(service.delegateFrom(origin, input)).rejects.toThrow('selected')
+      expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ combination: kiro.id }))
+      await expect(service.delegateFrom(origin, { ...input, combination: aws.id })).rejects.toThrow(
+        'selected',
+      )
+      expect(start).toHaveBeenLastCalledWith(expect.objectContaining({ combination: aws.id }))
+    } finally {
+      statuses.mockRestore()
+      start.mockRestore()
+    }
+  })
   it('inherits DSH permissions for generated combinations without elevating other origins', async () => {
     const { service, root } = await nativeSetup()
     const automatic = (await service.executionCatalog()).combinations.find(

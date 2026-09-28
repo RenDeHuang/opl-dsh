@@ -51,6 +51,48 @@ export { GROK_COMBINATION, DSH_COMBINATION } from '../contracts/sessions.ts'
 export const HARNESS_NAMESPACE = 'harness'
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
 const now = () => new Date().toISOString()
+const conversationPrompt = (
+  messages: GenerateOptions['messages'],
+  user: GenerateOptions['messages'][number],
+) => {
+  const history = messages
+    .filter((message) => ['user', 'assistant', 'tool'].includes(message.role))
+    .map((message) => {
+      const text = message.content
+        .map((part) => {
+          switch (part.type) {
+            case 'text':
+              return part.text
+            case 'reasoning':
+              return ''
+            case 'tool-call':
+              return `历史工具调用 ${part.name} (${part.id}): ${part.arguments}`
+            case 'image':
+            case 'file':
+              throw new LlmError(
+                '该 Harness 会话暂不支持直接附件，请提供项目内文件路径',
+                'HARNESS_INPUT',
+              )
+            default:
+              throw new LlmError(`该 Harness 暂不支持 ${part.type} 内容`, 'HARNESS_INPUT')
+          }
+        })
+        .filter(Boolean)
+        .join('\n')
+      const role =
+        message.role === 'tool'
+          ? `tool (${message.toolCallId}${message.isError ? ', failed' : ''})`
+          : message.role
+      return { message, text: text ? `${role}: ${text}` : '' }
+    })
+    .filter((item) => item.text)
+  const current = history.find((item) => item.message === user)?.text ?? ''
+  const context = history.filter((item) => item.message !== user).map((item) => item.text)
+  // Historical tool calls are context, never instructions to execute them again.
+  return context.length
+    ? `以下是先前会话记录，仅用于理解上下文，不要重新执行历史任务或工具调用。\n\n${context.join('\n\n')}\n\n当前用户请求：\n${current}`
+    : current
+}
 const required = (value: unknown, label: string): string => {
   if (typeof value !== 'string' || !value.trim() || value.length > 200000)
     throw Error(`无效的 ${label}`)
@@ -679,7 +721,7 @@ export class HarnessService {
             fs: { readTextFile: false, writeTextFile: false },
             terminal: false,
           },
-          clientInfo: { name: 'opl-dsh', version: '0.2.12' },
+          clientInfo: { name: 'opl-dsh', version: '0.2.13' },
         }),
       )
       if (init.protocolVersion !== 1) throw Error('Harness 未协商 ACP v1')
@@ -1173,13 +1215,15 @@ export class HarnessService {
         item.enabled &&
         item.harnessRef === 'claude' &&
         item.modelRef.provider === 'opl-gateway' &&
-        item.modelRef.model === 'aws::claude-opus-5-5',
+        item.modelRef.model === 'kiro::claude-opus-5-5',
     )
     if (!definition) {
-      throw Error('Claude Opus 5.5 的 AWS 默认组合未就绪，请在 OPL Gateway 激活 AWS 分组并配置模型')
+      throw Error(
+        'Claude Opus 5.5 的 Kiro 默认组合未就绪，请在 OPL Gateway 激活 Kiro 分组并配置模型',
+      )
     }
     const status = (await this.combinations()).find((item) => item.id === definition.id)
-    if (!status?.available) throw Error(status?.reason ?? 'Claude Opus 5.5 的 AWS 默认组合不可用')
+    if (!status?.available) throw Error(status?.reason ?? 'Claude Opus 5.5 的 Kiro 默认组合不可用')
     return definition.id
   }
 
@@ -1608,27 +1652,8 @@ export class HarnessService {
     if (!user) throw new LlmError('没有可执行的用户输入', 'HARNESS_INPUT')
     const operationId = 'conversation:' + hash(user)
     const previous = record.turns.find((turn) => turn.operationId === operationId)
-    const messages =
-      record.turns.length && !previous
-        ? [user]
-        : previous
-          ? []
-          : options.messages.filter((message) => ['user', 'assistant'].includes(message.role))
-    const text =
-      previous?.prompt ??
-      messages
-        .map((message) => {
-          if (message.content.some((part) => part.type !== 'text'))
-            throw new LlmError(
-              '该 Harness 会话暂不支持直接附件，请提供项目内文件路径',
-              'HARNESS_INPUT',
-            )
-          return `${message.role}: ${message.content
-            .filter((part) => part.type === 'text')
-            .map((part) => part.text)
-            .join('\n')}`
-        })
-        .join('\n\n')
+    const messages = record.turns.length && !previous ? [user] : previous ? [] : options.messages
+    const text = previous?.prompt ?? conversationPrompt(messages, user)
     this.conversationOwners.set(record.id, {
       sessionId: options.sessionId,
       ...(options.signal ? { signal: options.signal } : {}),

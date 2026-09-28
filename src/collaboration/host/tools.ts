@@ -28,16 +28,16 @@ export function installCollaborationTools(ctx: Context, harness: HarnessService)
         defineTool({
           name: 'delegate_to_harness',
           description:
-            '在同项目创建或继续另一运行配置的子任务。Claude Opus 5.5 未指定渠道时默认使用 AWS；需要 Kiro 时传入精确组合 ID。默认等待结果；返回后核验实际产物并调用 review_harness_task。继续修改沿用 sessionId 和 taskId，新指令用新 operationId。权限等待时请用户处理，不要重派。',
+            '在同项目创建或继续另一运行配置的子任务。Claude Opus 5.5 未指定渠道时默认使用 Kiro；需要 AWS 时传入精确组合 ID。默认等待结果；返回后核验实际产物并调用 review_harness_task。继续修改沿用 sessionId 和 taskId，新指令用新 operationId。权限等待时请用户处理，不要重派。',
           parameters: {
             combination: {
               type: 'string',
               description:
-                '可选。Claude Opus 5.5 不指定渠道时默认 AWS；指定 Kiro 时传入精确组合 ID。',
+                '可选。Claude Opus 5.5 不指定渠道时默认 Kiro；指定 AWS 时传入精确组合 ID。',
             },
             model: {
               type: 'string',
-              description: '可选模型别名；填写 claude-opus-5-5 且未指定 combination 时使用 AWS。',
+              description: '可选模型别名；填写 claude-opus-5-5 且未指定 combination 时使用 Kiro。',
             },
             task: { type: 'string', required: true },
             taskId: { type: 'string', required: true },
