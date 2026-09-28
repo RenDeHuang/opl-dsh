@@ -25,6 +25,19 @@ type Choice = {
   source: string
 }
 const measureStyle = { visibility: 'hidden', left: 0, top: 0 } as const
+const effortLabels: Record<string, string> = {
+  off: '关闭',
+  low: '低',
+  medium: '中',
+  high: '高',
+  xhigh: '极高',
+  max: '最大',
+  ultra: '超高',
+}
+
+function effortLabel(id: string, name: string): string {
+  return effortLabels[id] ?? name
+}
 
 function sourceLabel(provider: string, fallback: string): string {
   if (provider === 'opl-gateway') return 'OPL Gateway'
@@ -142,11 +155,14 @@ export function CombinationSelect({
     : undefined
   const reasoning = currentModel?.reasoning
   const effectiveEffort = selection.current?.reasoningEffort ?? reasoning?.defaultEffort
-  const effortLabel =
+  const currentEffortLabel =
     effectiveEffort === undefined
       ? undefined
-      : (reasoning?.efforts.find((effort) => effort.id === effectiveEffort)?.name ??
-        effectiveEffort)
+      : effortLabel(
+          effectiveEffort,
+          reasoning?.efforts.find((effort) => effort.id === effectiveEffort)?.name ??
+            effectiveEffort,
+        )
   const modelLabel = selected
     ? choiceLabel(selected)
     : (currentModel?.name ?? selection.current?.model ?? '请选择模型')
@@ -160,7 +176,7 @@ export function CombinationSelect({
           ...reasoning.efforts.map((effort) => ({
             key: `effort:${effort.id}`,
             effort: effort.id,
-            label: effort.name,
+            label: effortLabel(effort.id, effort.name),
           })),
         ]
 
@@ -359,7 +375,7 @@ export function CombinationSelect({
         ref={triggerRef}
         type="button"
         className={css.trigger}
-        aria-label={`选择模型，当前 ${modelLabel}${effortLabel ? `，推理强度 ${effortLabel}` : ''}`}
+        aria-label={`选择模型，当前 ${modelLabel}${currentEffortLabel ? `，推理强度 ${currentEffortLabel}` : ''}`}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? `${id}-menu` : undefined}
@@ -371,7 +387,7 @@ export function CombinationSelect({
         <span className={css.triggerLabel}>
           {pendingChoice ? choiceLabel(pendingChoice) : modelLabel}
         </span>
-        {effortLabel && <span className={css.triggerEffort}>{effortLabel}</span>}
+        {currentEffortLabel && <span className={css.triggerEffort}>{currentEffortLabel}</span>}
         {busy ? (
           <StateDot state="ongoing" />
         ) : (
@@ -417,7 +433,7 @@ export function CombinationSelect({
                     onClick={() => drill('effort')}
                   >
                     <span className={css.cellLabel}>推理强度</span>
-                    <span className={css.cellValue}>{effortLabel ?? '默认'}</span>
+                    <span className={css.cellValue}>{currentEffortLabel ?? '默认'}</span>
                     <IconChevronRightOutlineRegular className={css.cellChevron} />
                   </button>
                 )}
