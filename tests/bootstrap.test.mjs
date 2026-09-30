@@ -21,9 +21,9 @@ while [[ $# -gt 0 ]]; do
   shift
 done
 case "$url" in
-  */latest) echo 'https://github.com/gaofeng21cn/opl-dsh/releases/tag/${mode === 'bad-tag' ? '../wrong' : 'dsh-v0.1.7-rc.2-opl.1'}';;
-  */download/dsh-v0.1.7-rc.2-opl.1/SHA256SUMS) echo '${createHash('sha256').update('fixture').digest('hex')}  OPL-DSH-Enhancements.zip' > "$output";;
-  */download/dsh-v0.1.7-rc.2-opl.1/OPL-DSH-Enhancements.zip) printf '%s' '${mode === 'corrupt' ? 'corrupt' : 'fixture'}' > "$output";;
+  */latest) echo 'https://github.com/gaofeng21cn/opl-dsh/releases/tag/${mode === 'bad-tag' ? '../wrong' : 'opl-dsh-v0.2.16'}';;
+  */download/opl-dsh-v0.2.16/SHA256SUMS) echo '${createHash('sha256').update('fixture').digest('hex')}  OPL-DSH-Enhancements.zip' > "$output";;
+  */download/opl-dsh-v0.2.16/OPL-DSH-Enhancements.zip) printf '%s' '${mode === 'corrupt' ? 'corrupt' : 'fixture'}' > "$output";;
   *) exit 42;;
 esac
 `,
@@ -61,7 +61,7 @@ test('bootstrap rejects corrupt downloads before extraction or execution', () =>
 test('bootstrap rejects unexpected release redirects', () => {
   const result = bootstrap('bad-tag')
   assert.notEqual(result.status, 0)
-  assert.match(result.stderr, /无法读取 OPL DSH 发布版本/)
+  assert.match(result.stderr, /无法读取 OPL DSH 稳定发布版本/)
 })
 
 test('Mac installer reaches the download branch in a UTF-8 locale and propagates failure', () => {

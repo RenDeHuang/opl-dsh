@@ -134,6 +134,7 @@ for (const file of [
   'setup.mjs',
   'desktop-platform.mjs',
   'update.mjs',
+  'release-manifest.mjs',
   'skill-install.mjs',
   'installation-paths.mjs',
   'skill/SKILL.md',

@@ -1,6 +1,6 @@
 {
   "name": "@one-person-lab/dsh-opl",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.host.json && tsc -p tsconfig.client.json",
     "test": "vitest run && node --test tests/*.test.mjs",
     "package": "npm run build && node package.mjs",
+    "release:manifest": "node scripts/create-release-manifest.mjs",
     "format": "prettier --write src tests scripts installer/*.mjs build.mjs",
     "format:check": "prettier --check src tests scripts installer/*.mjs build.mjs",
     "generate:rpc": "node scripts/generate-rpc.mjs",

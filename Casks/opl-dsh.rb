@@ -1,8 +1,8 @@
 cask "opl-dsh" do
-  version "0.2.0-rc.2,15"
+  version "0.2.16"
   sha256 "fdf6af2483422c11c3b8c613774edcd94f1b39358edc719d9b08be3d4e8c79c3"
 
-  url "https://github.com/gaofeng21cn/opl-dsh/releases/download/dsh-v#{version.csv.first}-opl.#{version.csv.second}/OPL-DSH-Enhancements.zip"
+  url "https://github.com/gaofeng21cn/opl-dsh/releases/download/opl-dsh-v#{version}/OPL-DSH-Enhancements.zip"
   name "OPL DSH"
   desc "Official DeepSeek Harness desktop with OPL Gateway and Codex collaboration"
   homepage "https://github.com/gaofeng21cn/opl-dsh"

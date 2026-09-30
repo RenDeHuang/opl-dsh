@@ -11,7 +11,7 @@ trap 'rm -rf "$STAGE"' EXIT
 BASE='https://github.com/gaofeng21cn/opl-dsh/releases'
 LATEST="$(curl --fail --silent --show-error --location --retry 2 --max-time 60 --proto '=https' --proto-redir '=https' -o /dev/null -w '%{url_effective}' "$BASE/latest")"
 TAG="${LATEST#"$BASE/tag/"}"
-[[ "$LATEST" == "$BASE/tag/"* && "$TAG" =~ ^[a-zA-Z0-9._-]+$ ]] || { echo '无法读取 OPL DSH 发布版本。' >&2; exit 1; }
+[[ "$LATEST" == "$BASE/tag/"* && "$TAG" =~ ^opl-dsh-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo '无法读取 OPL DSH 稳定发布版本。' >&2; exit 1; }
 echo '正在下载并校验 OPL DSH 增强…'
 for FILE in SHA256SUMS OPL-DSH-Enhancements.zip; do
   curl --fail --silent --show-error --location --retry 2 --max-time 120 --proto '=https' --proto-redir '=https' "$BASE/download/$TAG/$FILE" -o "$STAGE/$FILE"

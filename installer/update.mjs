@@ -4,6 +4,7 @@ import { installationPaths } from './installation-paths.mjs'
 import { join, dirname } from 'node:path'
 import { createHash } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
+import { validateReleaseManifest } from './release-manifest.mjs'
 const api = 'https://api.github.com/repos/gaofeng21cn/opl-dsh/releases/latest'
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
 export function newer(candidate, current) {
@@ -80,15 +81,35 @@ export async function refreshEnhancements(root, application) {
       return
     }
     const asset = release.assets.find((a) => a.name === 'OPL-DSH-Enhancements.zip')
+    const manifestAsset = release.assets.find((a) => a.name === 'release-manifest.json')
+    const downloadPrefix = 'https://github.com/gaofeng21cn/opl-dsh/releases/download/'
     if (
       !asset ||
       !/^sha256:[a-f0-9]{64}$/.test(asset.digest) ||
-      !asset.browser_download_url.startsWith(
-        'https://github.com/gaofeng21cn/opl-dsh/releases/download/',
-      )
+      !manifestAsset ||
+      !/^sha256:[a-f0-9]{64}$/.test(manifestAsset.digest) ||
+      !asset.browser_download_url.startsWith(downloadPrefix) ||
+      !manifestAsset.browser_download_url.startsWith(downloadPrefix)
     )
       throw Error('invalid release')
     if (asset.size > 32 * 1024 * 1024) throw Error('invalid package size')
+    const manifestResponse = await fetch(manifestAsset.browser_download_url, {
+      signal: AbortSignal.timeout(30000),
+    })
+    if (!manifestResponse.ok) throw Error('release manifest download failed')
+    const manifestBytes = Buffer.from(await manifestResponse.arrayBuffer())
+    if ('sha256:' + digest(manifestBytes) !== manifestAsset.digest)
+      throw Error('manifest checksum failed')
+    const releaseManifest = JSON.parse(manifestBytes.toString('utf8'))
+    validateReleaseManifest(releaseManifest, {
+      tagName: release.tag_name,
+      assetName: asset.name,
+    })
+    if (
+      releaseManifest.enhancement.sha256 !== asset.digest ||
+      releaseManifest.enhancement.size !== asset.size
+    )
+      throw Error('release manifest asset mismatch')
     const response = await fetch(asset.browser_download_url, {
       signal: AbortSignal.timeout(120000),
     })
@@ -122,11 +143,17 @@ export async function refreshEnhancements(root, application) {
     const version = manifest.enhancementVersion ?? manifest.version
     if (
       !manifest.officialVersion ||
+      manifest.officialVersion !== releaseManifest.official.version ||
+      version !== releaseManifest.enhancement.version ||
       manifest.suiteSha256 !== digest(JSON.stringify(manifest.payloadFiles))
     )
       throw Error('invalid manifest')
     if (!newer(version, current.suiteVersion ?? '0.1.0')) {
-      await status({ state: 'current', officialVersion: manifest.officialVersion })
+      await status({
+        state: 'current',
+        officialVersion: releaseManifest.official.version,
+        releaseVersion: releaseManifest.releaseVersion,
+      })
       return
     }
     // Verify every executable byte before invoking a newly downloaded installer.
@@ -189,7 +216,12 @@ export async function refreshEnhancements(root, application) {
     }
     const installed = JSON.parse(await readFile(installationFile, 'utf8'))
     if (installed.suiteVersion !== version) throw Error('version not confirmed')
-    await status({ state: 'updated', version, officialVersion: manifest.officialVersion })
+    await status({
+      state: 'updated',
+      version,
+      officialVersion: releaseManifest.official.version,
+      releaseVersion: releaseManifest.releaseVersion,
+    })
   } catch {
     // Keep the installed release usable when offline or an update is refused.
     await status({ state: 'deferred', message: '本次增强更新未完成，继续使用已安装版本。' }).catch(

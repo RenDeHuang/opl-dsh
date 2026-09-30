@@ -4,6 +4,36 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { newer, refreshEnhancements } from '../installer/update.mjs'
+import { validateReleaseManifest } from '../installer/release-manifest.mjs'
+
+test('stable release manifest binds the official desktop and OPL asset', () => {
+  const manifest = {
+    schemaVersion: 1,
+    channel: 'stable',
+    releaseVersion: '0.2.16',
+    tagName: 'opl-dsh-v0.2.16',
+    official: { product: 'DeepSeek Harness', version: '0.2.0-rc.2' },
+    enhancement: {
+      product: 'OPL DSH Enhancements',
+      version: '0.2.16',
+      asset: 'OPL-DSH-Enhancements.zip',
+      sha256: 'sha256:' + 'a'.repeat(64),
+      size: 10,
+    },
+  }
+  assert.equal(
+    validateReleaseManifest(manifest, { tagName: manifest.tagName }).releaseVersion,
+    '0.2.16',
+  )
+  assert.throws(
+    () =>
+      validateReleaseManifest(
+        { ...manifest, tagName: 'dsh-v0.2.0-rc.2-opl.16' },
+        { tagName: manifest.tagName },
+      ),
+    /联合版本|tag/,
+  )
+})
 
 test('stable versions advance numerically without downgrades or prereleases', () => {
   assert.equal(newer('0.10.0', '0.2.0'), true)
@@ -45,14 +75,21 @@ test('updates preserve the installed release while running, offline, or on check
     globalThis.fetch = async (url) =>
       String(url).includes('api.github.com')
         ? Response.json({
-            tag_name: 'v0.2.0',
+            tag_name: 'opl-dsh-v0.2.0',
             assets: [
               {
                 name: 'OPL-DSH-Enhancements.zip',
                 size: 3,
                 digest: 'sha256:' + '0'.repeat(64),
                 browser_download_url:
-                  'https://github.com/gaofeng21cn/opl-dsh/releases/download/v0.2.0/OPL-DSH-Enhancements.zip',
+                  'https://github.com/gaofeng21cn/opl-dsh/releases/download/opl-dsh-v0.2.0/OPL-DSH-Enhancements.zip',
+              },
+              {
+                name: 'release-manifest.json',
+                size: 3,
+                digest: 'sha256:' + '0'.repeat(64),
+                browser_download_url:
+                  'https://github.com/gaofeng21cn/opl-dsh/releases/download/opl-dsh-v0.2.0/release-manifest.json',
               },
             ],
           })
