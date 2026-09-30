@@ -22,7 +22,8 @@ while [[ $# -gt 0 ]]; do
 done
 case "$url" in
   */latest) echo 'https://github.com/gaofeng21cn/opl-dsh/releases/tag/${mode === 'bad-tag' ? '../wrong' : 'opl-dsh-v0.2.16'}';;
-  */download/opl-dsh-v0.2.16/SHA256SUMS) echo '${createHash('sha256').update('fixture').digest('hex')}  OPL-DSH-Enhancements.zip' > "$output";;
+  */download/opl-dsh-v0.2.16/SHA256SUMS) printf '${createHash('sha256').update('fixture').digest('hex')}  OPL-DSH-Enhancements.zip\n${createHash('sha256').update('{"schemaVersion":1,"channel":"stable","releaseVersion":"0.2.16","tagName":"opl-dsh-v0.2.16"}').digest('hex')}  release-manifest.json\n' > "$output";;
+  */download/opl-dsh-v0.2.16/release-manifest.json) printf '%s' '{"schemaVersion":1,"channel":"stable","releaseVersion":"0.2.16","tagName":"opl-dsh-v0.2.16"}' > "$output";;
   */download/opl-dsh-v0.2.16/OPL-DSH-Enhancements.zip) printf '%s' '${mode === 'corrupt' ? 'corrupt' : 'fixture'}' > "$output";;
   *) exit 42;;
 esac
