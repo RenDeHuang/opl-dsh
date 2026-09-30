@@ -25,8 +25,16 @@ MANIFEST_EXPECTED="$(awk '$2 ~ /(^|\/)release-manifest\.json$/ {print $1}' "$STA
 MANIFEST_ACTUAL="$(shasum -a 256 "$STAGE/release-manifest.json" | awk '{print $1}')"
 [[ "$MANIFEST_ACTUAL" == "$MANIFEST_EXPECTED" ]] || { echo '联合发布清单校验失败，未执行安装。' >&2; exit 1; }
 RELEASE_VERSION="${TAG#opl-dsh-v}"
-[[ "$(/usr/bin/plutil -extract channel raw -o - "$STAGE/release-manifest.json")" == stable ]] || { echo '发布清单不是稳定版。' >&2; exit 1; }
-[[ "$(/usr/bin/plutil -extract tagName raw -o - "$STAGE/release-manifest.json")" == "$TAG" ]] || { echo '发布清单 tag 与下载版本不符。' >&2; exit 1; }
-[[ "$(/usr/bin/plutil -extract releaseVersion raw -o - "$STAGE/release-manifest.json")" == "$RELEASE_VERSION" ]] || { echo '发布清单版本与下载版本不符。' >&2; exit 1; }
+manifest_value() {
+  local key="$1"
+  if [[ -x /usr/bin/plutil ]]; then
+    /usr/bin/plutil -extract "$key" raw -o - "$STAGE/release-manifest.json"
+  else
+    sed -nE 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*"([^"]*)".*/\1/p' "$STAGE/release-manifest.json" | head -n 1
+  fi
+}
+[[ "$(manifest_value channel)" == stable ]] || { echo '发布清单不是稳定版。' >&2; exit 1; }
+[[ "$(manifest_value tagName)" == "$TAG" ]] || { echo '发布清单 tag 与下载版本不符。' >&2; exit 1; }
+[[ "$(manifest_value releaseVersion)" == "$RELEASE_VERSION" ]] || { echo '发布清单版本与下载版本不符。' >&2; exit 1; }
 ditto -x -k "$STAGE/OPL-DSH-Enhancements.zip" "$STAGE/payload"
 /bin/bash "$STAGE/payload/install.command" "$@"
