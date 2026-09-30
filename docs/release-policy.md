@@ -4,7 +4,7 @@ OPL DSH 使用一个联合稳定版本表示一套可安装组合。版本号只
 
 ## 命名
 
-- Git tag：`opl-dsh-v<OPL版本>`，例如 `opl-dsh-v0.2.16`。
+- Git tag：`opl-dsh-v<OPL版本>`，例如 `opl-dsh-v0.2.18`。
 - Release 名称：`OPL DSH v<OPL版本>`。
 - Release channel：GitHub stable release，`draft=false`、`prerelease=false`、`latest=true`。
 - Release Note 标题固定为 `## OPL DSH v<OPL版本>`，正文顺序固定为：联合版本、官方 DSH 版本、变更、验证、已知限制、升级方式。
@@ -24,4 +24,3 @@ OPL DSH 使用一个联合稳定版本表示一套可安装组合。版本号只
 ## 历史清理
 
 稳定频道只保留一个最新 Release 和一个对应 tag。发布新版本后，删除旧 Release 与旧发布 tag；源码提交和本地安装回执仍保留用于追溯。删除前保存 release/tag 元数据和资产摘要，避免把公开历史误当作恢复凭据。
-

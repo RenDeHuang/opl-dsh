@@ -87,9 +87,9 @@ Codex Skill 的 `delegate` 返回组合会话 `id`，用它继续、等待或取
 
 本版开发依赖固定为官方 `0.2.0-rc.2`；上游仍为候选版，联合稳定 Release 同时记录两者的实际版本。
 
-增强插件、套件缓存和 Skill 位于官方应用外部，官方应用更新不会覆盖这些文件；OPL profile 与官方数据共同位于 `~/.dsh`。界面和安装记录显示实际官方桌面版本；不按版本号人为拒绝新版。插件 API 的实质变化仍可能需要兼容修复。日常使用直接打开官方 DeepSeek Harness，兼容入口只用于维护和增强更新。
+增强插件、套件缓存和 Skill 位于官方应用外部，官方应用更新不会覆盖这些文件；OPL profile 与官方数据共同位于 `~/.dsh`。界面和安装记录显示实际官方桌面版本；不按版本号人为拒绝新版。插件 API 的实质变化仍可能需要兼容修复。日常使用直接打开官方 DeepSeek Harness；需要联合版本检查时使用 OPL 维护入口或已启用自动启动的 Codex Skill。
 
-Homebrew 用户可用 `brew upgrade --cask gaofeng21cn/opl-dsh/opl-dsh` 更新安装器；应用日常更新仍走上述官方桌面与增强各自的更新机制。Homebrew 卸载仅移除 OPL 快捷入口，保留官方桌面、用户数据和 Codex Skill。
+Homebrew 用户可用 `brew upgrade --cask gaofeng21cn/opl-dsh/opl-dsh` 更新到最新联合稳定版；Homebrew 卸载仅移除 OPL 快捷入口，保留官方桌面、用户数据和 Codex Skill。
 
 增强包、更新缓存和安装记录保存在 OPL DSH Suite；官方 profile、登录、会话和设置保存在 `~/.dsh`。重新安装会保留两处已有数据。安装位置与数据兼容细节见[开发与验证说明](docs/development.md)。
 
