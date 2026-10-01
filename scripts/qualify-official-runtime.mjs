@@ -380,7 +380,23 @@ try {
   }
   evidence.finishedAt = new Date().toISOString()
   if (args.includes('--keep-profile')) evidence.isolatedProfile = root
-  else if (!desktop) await rm(root, { recursive: true, force: true })
+  else if (!desktop) {
+    // Windows can hold a handle on the disposable Electron profile (leveldb) briefly
+    // after the process exits. Scratch cleanup must never discard the evidence file,
+    // so retry and record a residual failure instead of throwing out of `finally`.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        await rm(root, { recursive: true, force: true })
+        break
+      } catch (error) {
+        if (attempt >= 4) {
+          evidence.scratchCleanupFailure = String(error.message)
+          break
+        }
+        await delay(500)
+      }
+    }
+  }
   await mkdir(resolve(evidenceFile, '..'), { recursive: true })
   await writeFile(evidenceFile, JSON.stringify(evidence, null, 2) + '\n', { mode: 0o600 })
   console.log(
