@@ -117,6 +117,15 @@ export async function verifyDesktopClient(pipe, screenshotPrefix, progress = () 
     pipe.events.filter(
       (event) => event.sessionId === session && event.method === 'Runtime.exceptionThrown',
     )
+  // A diagnostic capture must never replace the failure that triggered it: on a
+  // slow or non-compositing runner the screenshot itself can time out and hide the
+  // real description the caller needs.
+  async function captureFailureScreenshot() {
+    try {
+      const screenshot = await pipe.command('Page.captureScreenshot', { format: 'png' }, session)
+      await writeFile(screenshotPrefix + '-failure.png', Buffer.from(screenshot.data, 'base64'))
+    } catch {}
+  }
   async function waitFor(expression, description) {
     for (let attempt = 0; attempt < 80; attempt++) {
       if (await pipe.evaluate(session, expression)) return
@@ -126,8 +135,7 @@ export async function verifyDesktopClient(pipe, screenshotPrefix, progress = () 
       session,
       "Array.from(document.querySelectorAll('button,[role=menuitem]')).filter(x=>x.getClientRects().length).map(x=>x.getAttribute('aria-label')||x.textContent?.trim()).filter(Boolean)",
     )
-    const screenshot = await pipe.command('Page.captureScreenshot', { format: 'png' }, session)
-    await writeFile(screenshotPrefix + '-failure.png', Buffer.from(screenshot.data, 'base64'))
+    await captureFailureScreenshot()
     throw new Error(description + '；当前入口：' + JSON.stringify(buttons))
   }
   const clickLabel = (labels) =>
@@ -171,15 +179,7 @@ export async function verifyDesktopClient(pipe, screenshotPrefix, progress = () 
       `Array.from(document.querySelectorAll('[data-opl-panel="${panel.marker}"] [role=alert]')).filter(x=>x.getClientRects().length).map(x=>x.textContent?.trim()).filter(Boolean)`,
     )
     if (alerts.length) {
-      const failureScreenshot = await pipe.command(
-        'Page.captureScreenshot',
-        { format: 'png' },
-        session,
-      )
-      await writeFile(
-        screenshotPrefix + '-failure.png',
-        Buffer.from(failureScreenshot.data, 'base64'),
-      )
+      await captureFailureScreenshot()
       throw new Error(panel.label[0] + ' 报错：' + alerts.join('; '))
     }
     const screenshot = await pipe.command('Page.captureScreenshot', { format: 'png' }, session)
